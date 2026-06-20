@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PEA CARS+ V3</title>
+
+  <link rel="stylesheet" href="style.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">⚡</div>
+        <div>
+          <h1>PEA CARS+</h1>
+          <p>V3 Dashboard</p>
+        </div>
+      </div>
+
+      <nav>
+        <button class="nav-btn active" data-page="dashboard">Dashboard</button>
+        <button class="nav-btn" data-page="projects">Projects</button>
+        <button class="nav-btn" data-page="workqueue">Work Queue</button>
+        <button class="nav-btn" data-page="alerts">Alert Center</button>
+        <button class="nav-btn" data-page="assistant">AI Assistant</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="pageTitle">Dashboard</h2>
+          <p>PEA Construction Audit & Readiness System</p>
+        </div>
+
+        <div class="top-actions">
+          <input id="globalSearch" type="text" placeholder="ค้นหา WBS / ชื่องาน / ผู้รับผิดชอบ" />
+          <button id="refreshBtn">Refresh</button>
+        </div>
+      </header>
+
+      <section id="dashboardPage" class="page active">
+        <div class="kpi-grid" id="kpiGrid"></div>
+
+        <div class="chart-grid">
+          <div class="card">
+            <h3>สถานะงาน</h3>
+            <canvas id="statusChart"></canvas>
+          </div>
+
+          <div class="card">
+            <h3>ประเภทปัญหา</h3>
+            <canvas id="issueChart"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-head">
+            <h3>ภาพรวมโครงการ</h3>
+            <span id="projectCount">0 งาน</span>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Priority</th>
+                  <th>WBS</th>
+                  <th>ชื่องาน</th>
+                  <th>ผู้รับผิดชอบ</th>
+                  <th>สถานะ</th>
+                  <th>Cost</th>
+                  <th>Material</th>
+                  <th>Document</th>
+                  <th>Time</th>
+                  <th>Ready</th>
+                </tr>
+              </thead>
+              <tbody id="projectTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="projectsPage" class="page">
+        <div class="card">
+          <h3>Search Projects</h3>
+          <div class="search-row">
+            <input id="projectSearch" type="text" placeholder="ค้นหา WBS / ชื่องาน / ผู้รับผิดชอบ / จังหวัด" />
+            <button id="projectSearchBtn">ค้นหา</button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Priority</th>
+                  <th>WBS</th>
+                  <th>ชื่องาน</th>
+                  <th>ผู้รับผิดชอบ</th>
+                  <th>สถานะ</th>
+                  <th>Cost</th>
+                  <th>Material</th>
+                  <th>Document</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="searchTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="workqueuePage" class="page">
+        <div class="card">
+          <h3>Work Queue</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Priority</th>
+                  <th>WBS</th>
+                  <th>ชื่องาน</th>
+                  <th>ผู้รับผิดชอบ</th>
+                  <th>Main Issue</th>
+                  <th>Action</th>
+                  <th>จังหวัด</th>
+                </tr>
+              </thead>
+              <tbody id="workQueueTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="alertsPage" class="page">
+        <div class="card">
+          <h3>Alert Center</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Alert Type</th>
+                  <th>Priority</th>
+                  <th>WBS</th>
+                  <th>ชื่องาน</th>
+                  <th>ผู้รับผิดชอบ</th>
+                  <th>Issue</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="alertTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="assistantPage" class="page">
+        <div class="card assistant-card">
+          <h3>AI Assistant</h3>
+          <p>พิมพ์คำถาม เช่น “งานของนายเสกสรรค์ค้างอะไรบ้าง” หรือ “งาน 0005 ติดอะไร”</p>
+
+          <div id="chatBox" class="chat-box">
+            <div class="bot-msg">สวัสดีครับ ผมคือ PEA CARS+ Assistant พร้อมช่วยวิเคราะห์งานครับ</div>
+          </div>
+
+          <div class="chat-input">
+            <input id="assistantInput" type="text" placeholder="ถามเกี่ยวกับงาน CARS+..." />
+            <button id="assistantSendBtn">ส่ง</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="projectModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 id="modalTitle">รายละเอียดงาน</h3>
+        <button id="closeModalBtn">ปิด</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
