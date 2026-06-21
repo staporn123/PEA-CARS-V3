@@ -109,4 +109,13 @@ class CarsAPI {
   static ping() {
     return this.request("ping");
   }
+   static ping() {
+  return this.request("ping");
+}
+
+static saveChecklist(items) {
+  return this.request("savechecklist", {
+    items: JSON.stringify(items)
+  });
+}
 }
