@@ -7,8 +7,8 @@
 class CarsAPI {
   static request(action, params = {}) {
     return new Promise((resolve, reject) => {
-      if (typeof API_URL === "undefined" || !API_URL) {
-        reject(new Error("ไม่พบ API_URL ใน config.js"));
+      if (typeof CONFIG === "undefined" || !CONFIG.API_URL) {
+        reject(new Error("ไม่พบ CONFIG.API_URL ใน config.js"));
         return;
       }
 
@@ -25,10 +25,12 @@ class CarsAPI {
       const queryString = new URLSearchParams(query).toString();
       const script = document.createElement("script");
 
-      let timer = setTimeout(() => {
+      const timeout = CONFIG.API_TIMEOUT || 30000;
+
+      const timer = setTimeout(() => {
         cleanup();
         reject(new Error("API Timeout"));
-      }, typeof API_CONFIG !== "undefined" ? API_CONFIG.timeout : 30000);
+      }, timeout);
 
       function cleanup() {
         clearTimeout(timer);
@@ -55,7 +57,7 @@ class CarsAPI {
         reject(new Error("โหลดข้อมูลไม่สำเร็จ"));
       };
 
-      script.src = API_URL + "?" + queryString;
+      script.src = CONFIG.API_URL + "?" + queryString;
       document.body.appendChild(script);
     });
   }
