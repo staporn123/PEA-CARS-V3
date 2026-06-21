@@ -194,22 +194,23 @@ function renderKpi(data) {
   if (!kpiGrid) return;
 
   const items = [
-    { title: "งานทั้งหมด", value: data.total || 0, sub: "โครงการทั้งหมด" },
-    { title: "พร้อมปิดงาน", value: data.ready || 0, sub: "Ready to Close" },
-    { title: "ยังไม่พร้อม", value: data.notReady || 0, sub: "Need Action" },
-    { title: "ปิดแล้ว", value: data.closed || 0, sub: "Closed" },
-    { title: "ติดเอกสาร", value: data.docIssue || 0, sub: "Document Issue" },
-    { title: "ติดพัสดุ", value: data.materialIssue || 0, sub: "Material Issue" },
-    { title: "ติดค่าใช้จ่าย", value: data.costIssue || 0, sub: "Cost Issue" },
-    { title: "ติด Time", value: data.timeIssue || 0, sub: "Time Issue" },
-    { title: "REL", value: data.rel || 0, sub: "Released" },
-    { title: "TECO", value: data.teco || 0, sub: "Technically Complete" },
-    { title: "CLSD", value: data.clsd || 0, sub: "Closed Status" }
+    { title: "งานทั้งหมด", value: data.total || 0, sub: "โครงการทั้งหมด", icon: "📁", tone: "blue" },
+    { title: "พร้อมปิดงาน", value: data.ready || 0, sub: "Ready to Close", icon: "✅", tone: "green" },
+    { title: "ยังไม่พร้อม", value: data.notReady || 0, sub: "Need Action", icon: "⏱️", tone: "orange" },
+    { title: "ปิดแล้ว", value: data.closed || 0, sub: "Closed", icon: "🔒", tone: "purple" },
+    { title: "ติดเอกสาร", value: data.docIssue || 0, sub: "Document Issue", icon: "📄", tone: "red" },
+    { title: "ติดพัสดุ", value: data.materialIssue || 0, sub: "Material Issue", icon: "📦", tone: "orange" },
+    { title: "ติดค่าใช้จ่าย", value: data.costIssue || 0, sub: "Cost Issue", icon: "💰", tone: "yellow" },
+    { title: "ติด Time", value: data.timeIssue || 0, sub: "Time Issue", icon: "🕘", tone: "blue" },
+    { title: "REL", value: data.rel || 0, sub: "Released", icon: "📋", tone: "purple" },
+    { title: "TECO", value: data.teco || 0, sub: "Technically Complete", icon: "☑️", tone: "cyan" },
+    { title: "CLSD", value: data.clsd || 0, sub: "Closed Status", icon: "🔐", tone: "green" }
   ];
 
   kpiGrid.innerHTML = items.map(function (item) {
     return `
-      <div class="kpi-card">
+      <div class="kpi-card kpi-${escapeAttr(item.tone)}">
+        <div class="kpi-icon">${escapeHtml(item.icon)}</div>
         <div class="kpi-title">${escapeHtml(item.title)}</div>
         <div class="kpi-value">${escapeHtml(item.value)}</div>
         <div class="kpi-sub">${escapeHtml(item.sub)}</div>
@@ -233,27 +234,101 @@ function renderStatusChart(data) {
   const canvas = document.getElementById("statusChart");
   if (!canvas || typeof Chart === "undefined") return;
 
+  const parent = canvas.parentElement;
+  if (parent) {
+    parent.classList.add("status-chart-card");
+  }
+
+  canvas.style.maxWidth = "360px";
+  canvas.style.maxHeight = "300px";
+  canvas.style.margin = "0 auto";
+  canvas.style.display = "block";
+
   if (statusChart) statusChart.destroy();
+
+  const ready = Number(data.ready || 0);
+  const notReady = Number(data.notReady || 0);
+  const closed = Number(data.closed || 0);
+  const total = ready + notReady + closed;
 
   statusChart = new Chart(canvas, {
     type: "doughnut",
     data: {
       labels: ["พร้อมปิด", "ยังไม่พร้อม", "ปิดแล้ว"],
       datasets: [{
-        data: [
-          Number(data.ready || 0),
-          Number(data.notReady || 0),
-          Number(data.closed || 0)
-        ],
+        data: [ready, notReady, closed],
         backgroundColor: ["#22c55e", "#ef4444", "#38bdf8"],
-        borderWidth: 0
+        hoverBackgroundColor: ["#4ade80", "#f87171", "#7dd3fc"],
+        borderColor: "rgba(15, 23, 42, 0.95)",
+        borderWidth: 3,
+        hoverOffset: 8,
+        spacing: 2
       }]
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
+      cutout: "58%",
+      radius: "78%",
+      animation: {
+        animateRotate: true,
+        animateScale: true,
+        duration: 900,
+        easing: "easeOutQuart"
+      },
+      layout: {
+        padding: {
+          top: 6,
+          bottom: 6,
+          left: 6,
+          right: 6
+        }
+      },
       plugins: {
         legend: {
-          labels: { color: "#f8fafc" }
+          position: "right",
+          align: "center",
+          labels: {
+            color: "#f8fafc",
+            usePointStyle: true,
+            pointStyle: "circle",
+            padding: 18,
+            font: {
+              size: 13,
+              weight: "700"
+            },
+            generateLabels: function (chart) {
+              const dataset = chart.data.datasets[0];
+              return chart.data.labels.map(function (label, i) {
+                const value = Number(dataset.data[i] || 0);
+                const percent = total ? ((value / total) * 100).toFixed(1) : "0.0";
+
+                return {
+                  text: label + "  " + value + " (" + percent + "%)",
+                  fillStyle: dataset.backgroundColor[i],
+                  strokeStyle: dataset.backgroundColor[i],
+                  lineWidth: 0,
+                  hidden: false,
+                  index: i
+                };
+              });
+            }
+          }
+        },
+        tooltip: {
+          backgroundColor: "rgba(15, 23, 42, 0.96)",
+          titleColor: "#ffffff",
+          bodyColor: "#dbeafe",
+          borderColor: "rgba(148, 163, 184, 0.25)",
+          borderWidth: 1,
+          padding: 12,
+          callbacks: {
+            label: function (context) {
+              const value = Number(context.raw || 0);
+              const percent = total ? ((value / total) * 100).toFixed(1) : "0.0";
+              return " " + context.label + ": " + value + " งาน (" + percent + "%)";
+            }
+          }
         }
       }
     }
@@ -264,6 +339,13 @@ function renderStatusChart(data) {
 function renderIssueChart(data) {
   const canvas = document.getElementById("issueChart");
   if (!canvas || typeof Chart === "undefined") return;
+
+  const parent = canvas.parentElement;
+  if (parent) {
+    parent.classList.add("issue-chart-card");
+  }
+
+  canvas.style.maxHeight = "300px";
 
   if (issueChart) issueChart.destroy();
 
@@ -280,25 +362,67 @@ function renderIssueChart(data) {
           Number(data.timeIssue || 0)
         ],
         backgroundColor: ["#ef4444", "#fb923c", "#7c3aed", "#38bdf8"],
-        borderWidth: 0
+        hoverBackgroundColor: ["#f87171", "#fdba74", "#a78bfa", "#7dd3fc"],
+        borderRadius: 10,
+        borderSkipped: false,
+        barPercentage: 0.58,
+        categoryPercentage: 0.72
       }]
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 900,
+        easing: "easeOutQuart"
+      },
       plugins: {
         legend: {
-          labels: { color: "#f8fafc" }
+          position: "top",
+          labels: {
+            color: "#f8fafc",
+            boxWidth: 24,
+            boxHeight: 10,
+            padding: 18,
+            font: {
+              size: 13,
+              weight: "700"
+            }
+          }
+        },
+        tooltip: {
+          backgroundColor: "rgba(15, 23, 42, 0.96)",
+          titleColor: "#ffffff",
+          bodyColor: "#dbeafe",
+          borderColor: "rgba(148, 163, 184, 0.25)",
+          borderWidth: 1,
+          padding: 12
         }
       },
       scales: {
         x: {
-          ticks: { color: "#f8fafc" },
-          grid: { color: "rgba(148,163,184,0.15)" }
+          ticks: {
+            color: "#f8fafc",
+            font: {
+              size: 12,
+              weight: "700"
+            }
+          },
+          grid: {
+            color: "rgba(148,163,184,0.10)",
+            drawBorder: false
+          }
         },
         y: {
           beginAtZero: true,
-          ticks: { color: "#f8fafc" },
-          grid: { color: "rgba(148,163,184,0.15)" }
+          ticks: {
+            color: "#f8fafc",
+            precision: 0
+          },
+          grid: {
+            color: "rgba(148,163,184,0.14)",
+            drawBorder: false
+          }
         }
       }
     }
