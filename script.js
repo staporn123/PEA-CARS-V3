@@ -268,8 +268,8 @@ function renderStatusChart(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: "62%",
-      radius: "92%",
+      cutout: "70%",
+      radius: "78%",
       animation: {
         animateRotate: true,
         animateScale: true,
@@ -286,7 +286,7 @@ function renderStatusChart(data) {
       },
       plugins: {
         legend: {
-          position: "bottom",
+          position: "right",
           align: "center",
           labels: {
             color: "#f8fafc",
@@ -294,10 +294,10 @@ function renderStatusChart(data) {
             pointStyle: "circle",
             padding: 18,
             font: {
-              size: 14,
-                weight: "bold"
-                }
-            generateLabels: function (chart) {
+           size: 14,
+              weight: "bold"
+               },
+               generateLabels: function (chart) {
               const dataset = chart.data.datasets[0];
               return chart.data.labels.map(function (label, i) {
                 const value = Number(dataset.data[i] || 0);
