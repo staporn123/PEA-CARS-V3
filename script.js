@@ -30,33 +30,45 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 /* =========================
-   3) Event Binding
+   3) Data Helper
+========================= */
+
+function unwrapArray(response) {
+  if (Array.isArray(response)) return response;
+  if (response && Array.isArray(response.data)) return response.data;
+  if (response && Array.isArray(response.rows)) return response.rows;
+  return [];
+}
+
+function unwrapObject(response) {
+  if (response && response.data && typeof response.data === "object") {
+    return response.data;
+  }
+  return response || {};
+}
+
+
+/* =========================
+   4) Event Binding
 ========================= */
 
 function bindEvents() {
   document.querySelectorAll(".nav-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      const page = btn.dataset.page;
-      showPage(page);
+      showPage(btn.dataset.page);
     });
   });
 
   const refreshBtn = document.getElementById("refreshBtn");
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", loadAllData);
-  }
+  if (refreshBtn) refreshBtn.addEventListener("click", loadAllData);
 
   const projectSearchBtn = document.getElementById("projectSearchBtn");
-  if (projectSearchBtn) {
-    projectSearchBtn.addEventListener("click", searchProjects);
-  }
+  if (projectSearchBtn) projectSearchBtn.addEventListener("click", searchProjects);
 
   const projectSearch = document.getElementById("projectSearch");
   if (projectSearch) {
     projectSearch.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") {
-        searchProjects();
-      }
+      if (e.key === "Enter") searchProjects();
     });
   }
 
@@ -66,46 +78,36 @@ function bindEvents() {
       if (e.key === "Enter") {
         showPage("projects");
         const projectSearchInput = document.getElementById("projectSearch");
-        if (projectSearchInput) {
-          projectSearchInput.value = globalSearch.value;
-        }
+        if (projectSearchInput) projectSearchInput.value = globalSearch.value;
         searchProjects();
       }
     });
   }
 
   const assistantSendBtn = document.getElementById("assistantSendBtn");
-  if (assistantSendBtn) {
-    assistantSendBtn.addEventListener("click", askAssistant);
-  }
+  if (assistantSendBtn) assistantSendBtn.addEventListener("click", askAssistant);
 
   const assistantInput = document.getElementById("assistantInput");
   if (assistantInput) {
     assistantInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") {
-        askAssistant();
-      }
+      if (e.key === "Enter") askAssistant();
     });
   }
 
   const closeModalBtn = document.getElementById("closeModalBtn");
-  if (closeModalBtn) {
-    closeModalBtn.addEventListener("click", closeModal);
-  }
+  if (closeModalBtn) closeModalBtn.addEventListener("click", closeModal);
 
   const modal = document.getElementById("projectModal");
   if (modal) {
     modal.addEventListener("click", function (e) {
-      if (e.target === modal) {
-        closeModal();
-      }
+      if (e.target === modal) closeModal();
     });
   }
 }
 
 
 /* =========================
-   4) Page Control
+   5) Page Control
 ========================= */
 
 function showPage(page) {
@@ -118,14 +120,10 @@ function showPage(page) {
   });
 
   const pageEl = document.getElementById(page + "Page");
-  if (pageEl) {
-    pageEl.classList.add("active");
-  }
+  if (pageEl) pageEl.classList.add("active");
 
   const navBtn = document.querySelector('.nav-btn[data-page="' + page + '"]');
-  if (navBtn) {
-    navBtn.classList.add("active");
-  }
+  if (navBtn) navBtn.classList.add("active");
 
   const titleMap = {
     dashboard: "Dashboard",
@@ -136,31 +134,31 @@ function showPage(page) {
   };
 
   const pageTitle = document.getElementById("pageTitle");
-  if (pageTitle) {
-    pageTitle.textContent = titleMap[page] || "Dashboard";
-  }
+  if (pageTitle) pageTitle.textContent = titleMap[page] || "Dashboard";
 }
 
 
 /* =========================
-   5) Load Data
+   6) Load Data
 ========================= */
 
 async function loadAllData() {
   try {
     setLoading(true);
 
-    const dashboard = await CarsAPI.getDashboard();
-    const projects = await CarsAPI.getProjects();
-    const queue = await CarsAPI.getWorkQueue();
-    const alerts = await CarsAPI.getAlertCenter();
+    const dashboardRaw = await CarsAPI.getDashboard();
+    const projectsRaw = await CarsAPI.getProjects();
+    const queueRaw = await CarsAPI.getWorkQueue();
+    const alertsRaw = await CarsAPI.getAlertCenter();
 
-    allProjects = Array.isArray(projects) ? projects : [];
-    workQueue = Array.isArray(queue) ? queue : [];
-    alertCenter = Array.isArray(alerts) ? alerts : [];
+    const dashboard = unwrapObject(dashboardRaw);
 
-    renderKpi(dashboard || {});
-    renderCharts(dashboard || {});
+    allProjects = unwrapArray(projectsRaw);
+    workQueue = unwrapArray(queueRaw);
+    alertCenter = unwrapArray(alertsRaw);
+
+    renderKpi(dashboard);
+    renderCharts(dashboard);
     renderProjectTable(allProjects);
     renderSearchTable(allProjects);
     renderWorkQueue(workQueue);
@@ -177,21 +175,18 @@ async function loadAllData() {
 
 function setLoading(isLoading) {
   const btn = document.getElementById("refreshBtn");
-
   if (!btn) return;
 
   btn.disabled = isLoading;
   btn.textContent = isLoading ? "Loading..." : "Refresh";
 
   const app = document.getElementById("app");
-  if (app) {
-    app.classList.toggle("loading", isLoading);
-  }
+  if (app) app.classList.toggle("loading", isLoading);
 }
 
 
 /* =========================
-   6) KPI Render
+   7) KPI Render
 ========================= */
 
 function renderKpi(data) {
@@ -225,7 +220,7 @@ function renderKpi(data) {
 
 
 /* =========================
-   7) Chart Render
+   8) Chart Render
 ========================= */
 
 function renderCharts(data) {
@@ -238,9 +233,7 @@ function renderStatusChart(data) {
   const canvas = document.getElementById("statusChart");
   if (!canvas || typeof Chart === "undefined") return;
 
-  if (statusChart) {
-    statusChart.destroy();
-  }
+  if (statusChart) statusChart.destroy();
 
   statusChart = new Chart(canvas, {
     type: "doughnut",
@@ -252,11 +245,7 @@ function renderStatusChart(data) {
           Number(data.notReady || 0),
           Number(data.closed || 0)
         ],
-        backgroundColor: [
-          "#22c55e",
-          "#ef4444",
-          "#38bdf8"
-        ],
+        backgroundColor: ["#22c55e", "#ef4444", "#38bdf8"],
         borderWidth: 0
       }]
     },
@@ -264,9 +253,7 @@ function renderStatusChart(data) {
       responsive: true,
       plugins: {
         legend: {
-          labels: {
-            color: "#f8fafc"
-          }
+          labels: { color: "#f8fafc" }
         }
       }
     }
@@ -278,9 +265,7 @@ function renderIssueChart(data) {
   const canvas = document.getElementById("issueChart");
   if (!canvas || typeof Chart === "undefined") return;
 
-  if (issueChart) {
-    issueChart.destroy();
-  }
+  if (issueChart) issueChart.destroy();
 
   issueChart = new Chart(canvas, {
     type: "bar",
@@ -294,12 +279,7 @@ function renderIssueChart(data) {
           Number(data.costIssue || 0),
           Number(data.timeIssue || 0)
         ],
-        backgroundColor: [
-          "#ef4444",
-          "#fb923c",
-          "#7c3aed",
-          "#38bdf8"
-        ],
+        backgroundColor: ["#ef4444", "#fb923c", "#7c3aed", "#38bdf8"],
         borderWidth: 0
       }]
     },
@@ -307,28 +287,18 @@ function renderIssueChart(data) {
       responsive: true,
       plugins: {
         legend: {
-          labels: {
-            color: "#f8fafc"
-          }
+          labels: { color: "#f8fafc" }
         }
       },
       scales: {
         x: {
-          ticks: {
-            color: "#f8fafc"
-          },
-          grid: {
-            color: "rgba(148,163,184,0.15)"
-          }
+          ticks: { color: "#f8fafc" },
+          grid: { color: "rgba(148,163,184,0.15)" }
         },
         y: {
           beginAtZero: true,
-          ticks: {
-            color: "#f8fafc"
-          },
-          grid: {
-            color: "rgba(148,163,184,0.15)"
-          }
+          ticks: { color: "#f8fafc" },
+          grid: { color: "rgba(148,163,184,0.15)" }
         }
       }
     }
@@ -337,7 +307,7 @@ function renderIssueChart(data) {
 
 
 /* =========================
-   8) Project Table
+   9) Project Table
 ========================= */
 
 function renderProjectTable(rows) {
@@ -346,9 +316,7 @@ function renderProjectTable(rows) {
 
   if (!tbody) return;
 
-  if (count) {
-    count.textContent = rows.length + " งาน";
-  }
+  if (count) count.textContent = rows.length + " งาน";
 
   if (!rows.length) {
     tbody.innerHTML = `
@@ -359,9 +327,7 @@ function renderProjectTable(rows) {
     return;
   }
 
-  tbody.innerHTML = rows.map(function (p) {
-    return projectRowTemplate(p);
-  }).join("");
+  tbody.innerHTML = rows.map(projectRowTemplate).join("");
 }
 
 
@@ -378,9 +344,7 @@ function renderSearchTable(rows) {
     return;
   }
 
-  tbody.innerHTML = rows.map(function (p) {
-    return projectRowTemplate(p);
-  }).join("");
+  tbody.innerHTML = rows.map(projectRowTemplate).join("");
 }
 
 
@@ -433,7 +397,7 @@ function searchProjects() {
 
 
 /* =========================
-   9) Work Queue / Alert
+   10) Work Queue / Alert
 ========================= */
 
 function renderWorkQueue(rows) {
@@ -495,14 +459,16 @@ function renderAlertCenter(rows) {
 
 
 /* =========================
-   10) Project Detail Modal
+   11) Project Detail Modal
 ========================= */
 
 async function openProjectDetail(wbs) {
   try {
     selectedProject = null;
 
-    const detail = await CarsAPI.getProjectDetail(wbs);
+    const rawDetail = await CarsAPI.getProjectDetail(wbs);
+    const detail = unwrapObject(rawDetail);
+
     const project = detail.project || detail;
 
     selectedProject = project;
@@ -514,7 +480,6 @@ async function openProjectDetail(wbs) {
     if (!modal || !title || !body) return;
 
     title.textContent = "รายละเอียดงาน: " + (project.wbs || wbs);
-
     body.innerHTML = renderProjectDetail(project, detail);
 
     modal.classList.remove("hidden");
@@ -561,21 +526,10 @@ function renderProjectDetail(project, detail) {
 function renderDetailSections(detail) {
   let html = "";
 
-  if (detail.cost && detail.cost.items) {
-    html += renderCostDetail(detail.cost);
-  }
-
-  if (detail.material && detail.material.pendingItems) {
-    html += renderMaterialDetail(detail.material);
-  }
-
-  if (detail.document && detail.document.items) {
-    html += renderDocumentDetail(detail.document);
-  }
-
-  if (detail.time) {
-    html += renderTimeDetail(detail.time);
-  }
+  if (detail.cost && detail.cost.items) html += renderCostDetail(detail.cost);
+  if (detail.material && detail.material.pendingItems) html += renderMaterialDetail(detail.material);
+  if (detail.document && detail.document.items) html += renderDocumentDetail(detail.document);
+  if (detail.time) html += renderTimeDetail(detail.time);
 
   return html;
 }
@@ -722,14 +676,12 @@ function renderTimeDetail(time) {
 
 function closeModal() {
   const modal = document.getElementById("projectModal");
-  if (modal) {
-    modal.classList.add("hidden");
-  }
+  if (modal) modal.classList.add("hidden");
 }
 
 
 /* =========================
-   11) Export
+   12) Export
 ========================= */
 
 async function exportExcel() {
@@ -763,7 +715,7 @@ async function exportProjectPdf(wbs) {
 
 
 /* =========================
-   12) AI Assistant
+   13) AI Assistant
 ========================= */
 
 function askAssistant() {
@@ -805,17 +757,13 @@ function localAssistant(text) {
       q.includes(String(p.wbs || "").toLowerCase());
   });
 
-  if (byWbs) {
-    return projectSummaryText(byWbs);
-  }
+  if (byWbs) return projectSummaryText(byWbs);
 
   const byOwner = allProjects.filter(function (p) {
     return String(p.owner || "").toLowerCase().includes(q);
   });
 
-  if (byOwner.length) {
-    return ownerSummaryText(byOwner);
-  }
+  if (byOwner.length) return ownerSummaryText(byOwner);
 
   if (q.includes("ติดพัสดุ")) {
     const list = allProjects.filter(function (p) {
@@ -851,9 +799,7 @@ function localAssistant(text) {
       }).join("\n");
   }
 
-  return AI_CONFIG && AI_CONFIG.fallback
-    ? AI_CONFIG.fallback
-    : "ยังไม่พบข้อมูลจากคำถามนี้";
+  return "ยังไม่พบข้อมูลจากคำถามนี้";
 }
 
 
@@ -897,7 +843,7 @@ ${notReady.slice(0, 8).map(function (p, i) {
 
 
 /* =========================
-   13) UI Helpers
+   14) UI Helpers
 ========================= */
 
 function priorityBadge(priority) {
@@ -962,42 +908,30 @@ function detailItem(label, value) {
 
 
 /* =========================
-   14) Format Helpers
+   15) Format Helpers
 ========================= */
 
 function safeValue(value) {
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-
+  if (value === null || value === undefined || value === "") return "-";
   return value;
 }
 
 
 function formatPercent(value) {
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
+  if (value === null || value === undefined || value === "") return "-";
 
   if (typeof value === "number") {
-    if (value <= 1) {
-      return (value * 100).toFixed(2) + "%";
-    }
-
+    if (value <= 1) return (value * 100).toFixed(2) + "%";
     return value.toFixed(2) + "%";
   }
 
   const text = String(value);
 
-  if (text.includes("%")) {
-    return text;
-  }
+  if (text.includes("%")) return text;
 
   const n = Number(text);
 
-  if (!Number.isNaN(n)) {
-    return n.toFixed(2) + "%";
-  }
+  if (!Number.isNaN(n)) return n.toFixed(2) + "%";
 
   return text;
 }
@@ -1006,9 +940,7 @@ function formatPercent(value) {
 function formatMoney(value) {
   const n = Number(String(value || 0).replace(/,/g, ""));
 
-  if (Number.isNaN(n)) {
-    return "0.00";
-  }
+  if (Number.isNaN(n)) return "0.00";
 
   return n.toLocaleString("th-TH", {
     minimumFractionDigits: 2,
