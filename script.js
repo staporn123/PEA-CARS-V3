@@ -620,7 +620,8 @@ async function openProjectDetail(wbs) {
 
     const rawDetail = await CarsAPI.getProjectDetail(wbs);
     const detail = unwrapObject(rawDetail);
-    const project = detail.project || detail;
+
+    const project = detail.project || getProjectFromLocal(wbs) || detail;
 
     selectedProject = project;
 
@@ -641,30 +642,45 @@ async function openProjectDetail(wbs) {
   }
 }
 
+function getProjectFromLocal(wbs) {
+  const key = String(wbs || "").trim().toUpperCase();
+  return allProjects.find(p => String(p.wbs || "").trim().toUpperCase() === key) || null;
+}
+
 function renderProjectDetail(project, detail) {
   return `
-    <div class="detail-grid">
-      ${detailItem("WBS", project.wbs)}
-      ${detailItem("ชื่องาน", project.jobName)}
-      ${detailItem("ผู้รับผิดชอบ", project.owner)}
-      ${detailItem("จังหวัด", project.province)}
-      ${detailItem("สถานะระบบ", project.systemStatus)}
-      ${detailItem("สถานะผู้ใช้", project.userStatus)}
-      ${detailItem("Priority", project.priority)}
-      ${detailItem("Ready", project.readyToClose || project.closureStatus)}
-      ${detailItem("Cost", formatPercent(project.costPercent) + " / " + safeValue(project.costStatus))}
-      ${detailItem("Material", formatPercent(project.materialPercent) + " / " + safeValue(project.materialStatus))}
-      ${detailItem("Document", formatPercent(project.documentPercent) + " / " + safeValue(project.documentStatus))}
-      ${detailItem("Time", formatPercent(project.timePercent) + " / " + safeValue(project.timeStatus))}
+    <div class="detail-summary">
+      <div class="detail-hero">
+        <div>
+          <div class="detail-label">WBS</div>
+          <div class="detail-wbs">${escapeHtml(project.wbs)}</div>
+        </div>
+        <div>
+          ${priorityBadge(project.priority)}
+        </div>
+      </div>
+
+      <div class="detail-job-name">${escapeHtml(project.jobName || "-")}</div>
+
+      <div class="detail-grid">
+        ${detailItem("ผู้รับผิดชอบ", project.owner)}
+        ${detailItem("จังหวัด", project.province)}
+        ${detailItem("สถานะระบบ / ผู้ใช้", (project.systemStatus || "-") + " / " + (project.userStatus || "-"))}
+        ${detailItem("Ready", project.readyToClose || project.closureStatus || "-")}
+        ${detailItem("Cost", formatPercent(project.costPercent) + " / " + safeValue(project.costStatus))}
+        ${detailItem("Material", formatPercent(project.materialPercent) + " / " + safeValue(project.materialStatus))}
+        ${detailItem("Document", formatPercent(project.documentPercent) + " / " + safeValue(project.documentStatus))}
+        ${detailItem("Time", formatPercent(project.timePercent) + " / " + safeValue(project.timeStatus))}
+      </div>
     </div>
 
     <div class="detail-section card">
-      <h3>Main Issue</h3>
+      <h3>ปัญหาหลัก</h3>
       <p>${escapeHtml(project.mainIssue || "-")}</p>
     </div>
 
     <div class="detail-section card">
-      <h3>Recommended Action</h3>
+      <h3>แนวทางดำเนินการ</h3>
       <p>${escapeHtml(project.action || "-")}</p>
     </div>
 
@@ -703,14 +719,14 @@ function renderCostDetail(cost) {
         <table>
           <thead>
             <tr>
-              <th>ประเภทค่าใช้จ่าย</th>
+              <th>ประเภท</th>
               <th>แผน</th>
               <th>เบิกจริง</th>
               <th>%</th>
               <th>สถานะ</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody>${rows || `<tr><td colspan="5" class="empty-state">ไม่พบข้อมูล Cost</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -744,16 +760,14 @@ function renderMaterialDetail(material) {
           <thead>
             <tr>
               <th>รหัสพัสดุ</th>
-              <th>รายการพัสดุ</th>
+              <th>รายการ</th>
               <th>ต้องการ</th>
               <th>เบิกแล้ว</th>
               <th>ค้าง</th>
               <th>มูลค่าค้าง</th>
             </tr>
           </thead>
-          <tbody>
-            ${rows || `<tr><td colspan="6" class="empty-state">ไม่มีพัสดุค้าง</td></tr>`}
-          </tbody>
+          <tbody>${rows || `<tr><td colspan="6" class="empty-state">ไม่มีพัสดุค้าง</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -766,8 +780,8 @@ function renderDocumentDetail(documentDetail) {
       <tr>
         <td>${escapeHtml(x.docCode)}</td>
         <td>${escapeHtml(x.category)}</td>
-        <td class="text-wrap">${escapeHtml(x.documentName)}</td>
-        <td>${escapeHtml(x.status)}</td>
+        <td class="text-wrap">${escapeHtml(x.documentName || x.docName)}</td>
+        <td>${documentStatusBadge(x.status)}</td>
         <td>${escapeHtml(x.importance)}</td>
         <td>${escapeHtml(x.required)}</td>
       </tr>
@@ -793,7 +807,7 @@ function renderDocumentDetail(documentDetail) {
               <th>จำเป็น</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody>${rows || `<tr><td colspan="6" class="empty-state">ไม่พบข้อมูลเอกสาร</td></tr>`}</tbody>
         </table>
       </div>
       <br>
@@ -818,11 +832,17 @@ function renderTimeDetail(time) {
   `;
 }
 
+function documentStatusBadge(status) {
+  const s = String(status || "-");
+  const ok = isPassStatus(s) || s === "ไม่เกี่ยวข้อง";
+  const cls = ok ? "metric-pass" : "metric-fail";
+  return `<span class="metric-pill ${cls}">${escapeHtml(s)}</span>`;
+}
+
 function closeModal() {
   const modal = document.getElementById("projectModal");
   if (modal) modal.classList.add("hidden");
 }
-
 /* =========================
    Export
 ========================= */
