@@ -1,229 +1,1042 @@
+/* =========================================================
+   PEA CARS+ V4 Professional Edition
+   File: script.js
+   Purpose: ควบคุมหน้าเว็บ Dashboard / Projects / Work Queue / Alert / AI
+========================================================= */
+
+
+/* =========================
+   1) Global State
+========================= */
+
 let allProjects = [];
 let workQueue = [];
-let alerts = [];
+let alertCenter = [];
+
 let statusChart = null;
 let issueChart = null;
 
-window.addEventListener("DOMContentLoaded", () => {
+let selectedProject = null;
+
+
+/* =========================
+   2) Initial Load
+========================= */
+
+document.addEventListener("DOMContentLoaded", function () {
   bindEvents();
   loadAllData();
 });
 
+
+/* =========================
+   3) Event Binding
+========================= */
+
 function bindEvents() {
-  document.querySelectorAll(".nav-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      showPage(btn.dataset.page);
+  document.querySelectorAll(".nav-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const page = btn.dataset.page;
+      showPage(page);
     });
   });
 
   const refreshBtn = document.getElementById("refreshBtn");
-  if (refreshBtn) refreshBtn.addEventListener("click", loadAllData);
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", loadAllData);
+  }
 
   const projectSearchBtn = document.getElementById("projectSearchBtn");
-  if (projectSearchBtn) projectSearchBtn.addEventListener("click", searchProjects);
+  if (projectSearchBtn) {
+    projectSearchBtn.addEventListener("click", searchProjects);
+  }
 
   const projectSearch = document.getElementById("projectSearch");
-  if (projectSearch) projectSearch.addEventListener("keydown", e => { if (e.key === "Enter") searchProjects(); });
-
-  const globalSearch = document.getElementById("globalSearch");
-  if (globalSearch) {
-    globalSearch.addEventListener("keydown", e => {
+  if (projectSearch) {
+    projectSearch.addEventListener("keydown", function (e) {
       if (e.key === "Enter") {
-        showPage("projects");
-        document.getElementById("projectSearch").value = e.target.value;
         searchProjects();
       }
     });
   }
 
-  const assistantBtn = document.getElementById("assistantSendBtn");
-  if (assistantBtn) assistantBtn.addEventListener("click", askAssistant);
+  const globalSearch = document.getElementById("globalSearch");
+  if (globalSearch) {
+    globalSearch.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        showPage("projects");
+        const projectSearchInput = document.getElementById("projectSearch");
+        if (projectSearchInput) {
+          projectSearchInput.value = globalSearch.value;
+        }
+        searchProjects();
+      }
+    });
+  }
+
+  const assistantSendBtn = document.getElementById("assistantSendBtn");
+  if (assistantSendBtn) {
+    assistantSendBtn.addEventListener("click", askAssistant);
+  }
 
   const assistantInput = document.getElementById("assistantInput");
-  if (assistantInput) assistantInput.addEventListener("keydown", e => { if (e.key === "Enter") askAssistant(); });
+  if (assistantInput) {
+    assistantInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        askAssistant();
+      }
+    });
+  }
 
   const closeModalBtn = document.getElementById("closeModalBtn");
-  if (closeModalBtn) closeModalBtn.addEventListener("click", closeModal);
+  if (closeModalBtn) {
+    closeModalBtn.addEventListener("click", closeModal);
+  }
+
+  const modal = document.getElementById("projectModal");
+  if (modal) {
+    modal.addEventListener("click", function (e) {
+      if (e.target === modal) {
+        closeModal();
+      }
+    });
+  }
 }
+
+
+/* =========================
+   4) Page Control
+========================= */
 
 function showPage(page) {
-  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-  const el = document.getElementById(page + "Page");
-  if (el) el.classList.add("active");
+  document.querySelectorAll(".page").forEach(function (p) {
+    p.classList.remove("active");
+  });
 
-  const titles = { dashboard: "Dashboard", projects: "Projects", workqueue: "Work Queue", alerts: "Alert Center", assistant: "AI Assistant" };
-  document.getElementById("pageTitle").textContent = titles[page] || "Dashboard";
+  document.querySelectorAll(".nav-btn").forEach(function (b) {
+    b.classList.remove("active");
+  });
+
+  const pageEl = document.getElementById(page + "Page");
+  if (pageEl) {
+    pageEl.classList.add("active");
+  }
+
+  const navBtn = document.querySelector('.nav-btn[data-page="' + page + '"]');
+  if (navBtn) {
+    navBtn.classList.add("active");
+  }
+
+  const titleMap = {
+    dashboard: "Dashboard",
+    projects: "Projects",
+    workqueue: "Work Queue",
+    alerts: "Alert Center",
+    assistant: "AI Assistant"
+  };
+
+  const pageTitle = document.getElementById("pageTitle");
+  if (pageTitle) {
+    pageTitle.textContent = titleMap[page] || "Dashboard";
+  }
 }
+
+
+/* =========================
+   5) Load Data
+========================= */
 
 async function loadAllData() {
   try {
     setLoading(true);
-    const [dashboard, projects, queue, alertRows] = await Promise.all([
-      CarsAPI.getDashboard(),
-      CarsAPI.getProjects(),
-      CarsAPI.getWorkQueue(),
-      CarsAPI.getAlertCenter()
-    ]);
 
-    allProjects = projects;
-    workQueue = queue;
-    alerts = alertRows;
+    const dashboard = await CarsAPI.getDashboard();
+    const projects = await CarsAPI.getProjects();
+    const queue = await CarsAPI.getWorkQueue();
+    const alerts = await CarsAPI.getAlertCenter();
 
-    renderKpi(dashboard);
-    renderCharts(dashboard);
+    allProjects = Array.isArray(projects) ? projects : [];
+    workQueue = Array.isArray(queue) ? queue : [];
+    alertCenter = Array.isArray(alerts) ? alerts : [];
+
+    renderKpi(dashboard || {});
+    renderCharts(dashboard || {});
     renderProjectTable(allProjects);
     renderSearchTable(allProjects);
     renderWorkQueue(workQueue);
-    renderAlerts(alerts);
+    renderAlertCenter(alertCenter);
+
   } catch (err) {
-    alert("โหลดข้อมูลไม่สำเร็จ: " + err.message);
     console.error(err);
+    alert("โหลดข้อมูลไม่สำเร็จ: " + err.message);
   } finally {
     setLoading(false);
   }
 }
 
+
 function setLoading(isLoading) {
   const btn = document.getElementById("refreshBtn");
+
   if (!btn) return;
-  btn.textContent = isLoading ? "Loading..." : "Refresh";
+
   btn.disabled = isLoading;
+  btn.textContent = isLoading ? "Loading..." : "Refresh";
+
+  const app = document.getElementById("app");
+  if (app) {
+    app.classList.toggle("loading", isLoading);
+  }
 }
+
+
+/* =========================
+   6) KPI Render
+========================= */
 
 function renderKpi(data) {
+  const kpiGrid = document.getElementById("kpiGrid");
+  if (!kpiGrid) return;
+
   const items = [
-    ["งานทั้งหมด", data.total || 0], ["พร้อมปิด", data.ready || 0], ["ยังไม่พร้อม", data.notReady || 0],
-    ["ปิดแล้ว", data.closed || 0], ["ติดเอกสาร", data.docIssue || 0], ["ติดพัสดุ", data.materialIssue || 0],
-    ["ติดค่าใช้จ่าย", data.costIssue || 0], ["ติด Time", data.timeIssue || 0], ["REL", data.rel || 0], ["TECO", data.teco || 0]
+    { title: "งานทั้งหมด", value: data.total || 0, sub: "โครงการทั้งหมด" },
+    { title: "พร้อมปิดงาน", value: data.ready || 0, sub: "Ready to Close" },
+    { title: "ยังไม่พร้อม", value: data.notReady || 0, sub: "Need Action" },
+    { title: "ปิดแล้ว", value: data.closed || 0, sub: "Closed" },
+    { title: "ติดเอกสาร", value: data.docIssue || 0, sub: "Document Issue" },
+    { title: "ติดพัสดุ", value: data.materialIssue || 0, sub: "Material Issue" },
+    { title: "ติดค่าใช้จ่าย", value: data.costIssue || 0, sub: "Cost Issue" },
+    { title: "ติด Time", value: data.timeIssue || 0, sub: "Time Issue" },
+    { title: "REL", value: data.rel || 0, sub: "Released" },
+    { title: "TECO", value: data.teco || 0, sub: "Technically Complete" },
+    { title: "CLSD", value: data.clsd || 0, sub: "Closed Status" }
   ];
-  document.getElementById("kpiGrid").innerHTML = items.map(item => `<div class="kpi-card"><div class="kpi-title">${escapeHtml(item[0])}</div><div class="kpi-value">${escapeHtml(item[1])}</div></div>`).join("");
+
+  kpiGrid.innerHTML = items.map(function (item) {
+    return `
+      <div class="kpi-card">
+        <div class="kpi-title">${escapeHtml(item.title)}</div>
+        <div class="kpi-value">${escapeHtml(item.value)}</div>
+        <div class="kpi-sub">${escapeHtml(item.sub)}</div>
+      </div>
+    `;
+  }).join("");
 }
+
+
+/* =========================
+   7) Chart Render
+========================= */
 
 function renderCharts(data) {
-  const statusCtx = document.getElementById("statusChart");
-  const issueCtx = document.getElementById("issueChart");
-  if (!statusCtx || !issueCtx || typeof Chart === "undefined") return;
-  if (statusChart) statusChart.destroy();
-  if (issueChart) issueChart.destroy();
+  renderStatusChart(data);
+  renderIssueChart(data);
+}
 
-  statusChart = new Chart(statusCtx, {
+
+function renderStatusChart(data) {
+  const canvas = document.getElementById("statusChart");
+  if (!canvas || typeof Chart === "undefined") return;
+
+  if (statusChart) {
+    statusChart.destroy();
+  }
+
+  statusChart = new Chart(canvas, {
     type: "doughnut",
-    data: { labels: ["พร้อมปิด", "ยังไม่พร้อม", "ปิดแล้ว"], datasets: [{ data: [data.ready || 0, data.notReady || 0, data.closed || 0], borderWidth: 0 }] },
-    options: { plugins: { legend: { labels: { color: "#f8fafc" } } } }
-  });
-
-  issueChart = new Chart(issueCtx, {
-    type: "bar",
-    data: { labels: ["เอกสาร", "พัสดุ", "ค่าใช้จ่าย", "Time"], datasets: [{ label: "จำนวนงาน", data: [data.docIssue || 0, data.materialIssue || 0, data.costIssue || 0, data.timeIssue || 0], borderWidth: 0 }] },
-    options: { plugins: { legend: { labels: { color: "#f8fafc" } } }, scales: { x: { ticks: { color: "#f8fafc" } }, y: { ticks: { color: "#f8fafc" }, beginAtZero: true } } }
+    data: {
+      labels: ["พร้อมปิด", "ยังไม่พร้อม", "ปิดแล้ว"],
+      datasets: [{
+        data: [
+          Number(data.ready || 0),
+          Number(data.notReady || 0),
+          Number(data.closed || 0)
+        ],
+        backgroundColor: [
+          "#22c55e",
+          "#ef4444",
+          "#38bdf8"
+        ],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: {
+            color: "#f8fafc"
+          }
+        }
+      }
+    }
   });
 }
+
+
+function renderIssueChart(data) {
+  const canvas = document.getElementById("issueChart");
+  if (!canvas || typeof Chart === "undefined") return;
+
+  if (issueChart) {
+    issueChart.destroy();
+  }
+
+  issueChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: ["เอกสาร", "พัสดุ", "ค่าใช้จ่าย", "Time"],
+      datasets: [{
+        label: "จำนวนงาน",
+        data: [
+          Number(data.docIssue || 0),
+          Number(data.materialIssue || 0),
+          Number(data.costIssue || 0),
+          Number(data.timeIssue || 0)
+        ],
+        backgroundColor: [
+          "#ef4444",
+          "#fb923c",
+          "#7c3aed",
+          "#38bdf8"
+        ],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: {
+            color: "#f8fafc"
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: "#f8fafc"
+          },
+          grid: {
+            color: "rgba(148,163,184,0.15)"
+          }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            color: "#f8fafc"
+          },
+          grid: {
+            color: "rgba(148,163,184,0.15)"
+          }
+        }
+      }
+    }
+  });
+}
+
+
+/* =========================
+   8) Project Table
+========================= */
 
 function renderProjectTable(rows) {
-  document.getElementById("projectCount").textContent = `${rows.length} งาน`;
-  document.getElementById("projectTable").innerHTML = rows.map(projectRow).join("");
+  const tbody = document.getElementById("projectTable");
+  const count = document.getElementById("projectCount");
+
+  if (!tbody) return;
+
+  if (count) {
+    count.textContent = rows.length + " งาน";
+  }
+
+  if (!rows.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="10" class="empty-state">ไม่พบข้อมูลโครงการ</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(function (p) {
+    return projectRowTemplate(p);
+  }).join("");
 }
+
 
 function renderSearchTable(rows) {
-  document.getElementById("searchTable").innerHTML = rows.map(projectRow).join("");
+  const tbody = document.getElementById("searchTable");
+  if (!tbody) return;
+
+  if (!rows.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="10" class="empty-state">ไม่พบข้อมูลที่ค้นหา</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(function (p) {
+    return projectRowTemplate(p);
+  }).join("");
 }
 
-function projectRow(p) {
-  return `<tr onclick="openProject('${escapeAttr(p.wbs)}')">
-    <td>${priorityBadge(p.priority)}</td>
-    <td>${escapeHtml(p.wbs)}</td>
-    <td>${escapeHtml(p.jobName)}</td>
-    <td>${escapeHtml(p.owner)}</td>
-    <td><span class="status-pill">${escapeHtml(p.systemStatus || "-")} / ${escapeHtml(p.userStatus || "-")}</span></td>
-    <td>${metricBadge(p.costPercent, p.costStatus)}</td>
-    <td>${metricBadge(p.materialPercent, p.materialStatus)}</td>
-    <td>${metricBadge(p.documentPercent, p.documentStatus)}</td>
-    <td>${metricBadge(p.timePercent, p.timeStatus)}</td>
-    <td>${escapeHtml(p.readyToClose || p.closureStatus || "-")}</td>
-  </tr>`;
+
+function projectRowTemplate(p) {
+  const wbs = safeValue(p.wbs);
+
+  return `
+    <tr class="clickable" onclick="openProjectDetail('${escapeAttr(wbs)}')">
+      <td>${priorityBadge(p.priority)}</td>
+      <td>${escapeHtml(p.wbs)}</td>
+      <td class="text-wrap">${escapeHtml(p.jobName)}</td>
+      <td>${escapeHtml(p.owner)}</td>
+      <td>${statusBadge(p.systemStatus, p.userStatus)}</td>
+      <td>${metricBadge(p.costPercent, p.costStatus, "cost", wbs)}</td>
+      <td>${metricBadge(p.materialPercent, p.materialStatus, "material", wbs)}</td>
+      <td>${metricBadge(p.documentPercent, p.documentStatus, "document", wbs)}</td>
+      <td>${metricBadge(p.timePercent, p.timeStatus, "time", wbs)}</td>
+      <td>${escapeHtml(p.readyToClose || p.closureStatus || "-")}</td>
+    </tr>
+  `;
 }
+
 
 function searchProjects() {
-  const key = document.getElementById("projectSearch").value;
-  renderSearchTable(CarsAPI.filterProjects(allProjects, key));
+  const input = document.getElementById("projectSearch");
+  const keyword = input ? input.value.trim().toLowerCase() : "";
+
+  if (!keyword) {
+    renderSearchTable(allProjects);
+    return;
+  }
+
+  const filtered = allProjects.filter(function (p) {
+    return [
+      p.wbs,
+      p.jobName,
+      p.owner,
+      p.province,
+      p.systemStatus,
+      p.userStatus,
+      p.workType,
+      p.mainIssue
+    ].some(function (v) {
+      return String(v || "").toLowerCase().includes(keyword);
+    });
+  });
+
+  renderSearchTable(filtered);
 }
+
+
+/* =========================
+   9) Work Queue / Alert
+========================= */
 
 function renderWorkQueue(rows) {
-  document.getElementById("workQueueTable").innerHTML = rows.map(r => `<tr>
-    <td>${priorityBadge(r.priority)}</td><td>${escapeHtml(r.wbs)}</td><td>${escapeHtml(r.jobName)}</td><td>${escapeHtml(r.owner)}</td><td>${escapeHtml(r.mainIssue)}</td><td>${escapeHtml(r.action)}</td><td>${escapeHtml(r.province)}</td>
-  </tr>`).join("");
-}
+  const tbody = document.getElementById("workQueueTable");
+  if (!tbody) return;
 
-function renderAlerts(rows) {
-  document.getElementById("alertTable").innerHTML = rows.map(r => `<tr>
-    <td>${escapeHtml(r.alertType)}</td><td>${priorityBadge(r.priority)}</td><td>${escapeHtml(r.wbs)}</td><td>${escapeHtml(r.jobName)}</td><td>${escapeHtml(r.owner)}</td><td>${escapeHtml(r.issue)}</td><td>${escapeHtml(r.action)}</td>
-  </tr>`).join("");
-}
-
-async function openProject(wbs) {
-  try {
-    const detail = await CarsAPI.getProjectFullDetail(wbs);
-    const p = detail.project || detail;
-    document.getElementById("modalTitle").textContent = p.wbs || "รายละเอียดงาน";
-    document.getElementById("modalBody").innerHTML = `
-      <div class="detail-grid">
-        ${detailItem("WBS", p.wbs)}${detailItem("ชื่องาน", p.jobName)}${detailItem("ผู้รับผิดชอบ", p.owner)}${detailItem("สถานะ", `${p.systemStatus || "-"} / ${p.userStatus || "-"}`)}
-        ${detailItem("Cost", `${formatPercent(p.costPercent)} / ${p.costStatus || "-"}`)}${detailItem("Material", `${formatPercent(p.materialPercent)} / ${p.materialStatus || "-"}`)}${detailItem("Document", `${formatPercent(p.documentPercent)} / ${p.documentStatus || "-"}`)}${detailItem("Time", `${formatPercent(p.timePercent)} / ${p.timeStatus || "-"}`)}
-        ${detailItem("Ready", p.readyToClose || "-")}${detailItem("Main Issue", p.mainIssue || "-")}${detailItem("Priority", p.priority || "-")}
-      </div>
-      <div style="margin-top:18px" class="card"><h3>Recommended Action</h3><p>${escapeHtml(p.action || "-")}</p></div>
+  if (!rows.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="empty-state">ไม่พบข้อมูล Work Queue</td>
+      </tr>
     `;
-    document.getElementById("projectModal").classList.remove("hidden");
+    return;
+  }
+
+  tbody.innerHTML = rows.map(function (r) {
+    return `
+      <tr class="clickable" onclick="openProjectDetail('${escapeAttr(r.wbs)}')">
+        <td>${priorityBadge(r.priority)}</td>
+        <td>${escapeHtml(r.wbs)}</td>
+        <td class="text-wrap">${escapeHtml(r.jobName)}</td>
+        <td>${escapeHtml(r.owner)}</td>
+        <td>${escapeHtml(r.mainIssue)}</td>
+        <td class="text-wrap">${escapeHtml(r.action)}</td>
+        <td>${escapeHtml(r.province)}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+
+function renderAlertCenter(rows) {
+  const tbody = document.getElementById("alertTable");
+  if (!tbody) return;
+
+  if (!rows.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="empty-state">ไม่พบข้อมูล Alert Center</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(function (r) {
+    return `
+      <tr class="clickable" onclick="openProjectDetail('${escapeAttr(r.wbs)}')">
+        <td>${escapeHtml(r.alertType)}</td>
+        <td>${priorityBadge(r.priority)}</td>
+        <td>${escapeHtml(r.wbs)}</td>
+        <td class="text-wrap">${escapeHtml(r.jobName)}</td>
+        <td>${escapeHtml(r.owner)}</td>
+        <td>${escapeHtml(r.issue)}</td>
+        <td class="text-wrap">${escapeHtml(r.action)}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+
+/* =========================
+   10) Project Detail Modal
+========================= */
+
+async function openProjectDetail(wbs) {
+  try {
+    selectedProject = null;
+
+    const detail = await CarsAPI.getProjectDetail(wbs);
+    const project = detail.project || detail;
+
+    selectedProject = project;
+
+    const modal = document.getElementById("projectModal");
+    const title = document.getElementById("modalTitle");
+    const body = document.getElementById("modalBody");
+
+    if (!modal || !title || !body) return;
+
+    title.textContent = "รายละเอียดงาน: " + (project.wbs || wbs);
+
+    body.innerHTML = renderProjectDetail(project, detail);
+
+    modal.classList.remove("hidden");
+
   } catch (err) {
+    console.error(err);
     alert("เปิดรายละเอียดไม่สำเร็จ: " + err.message);
   }
 }
 
-function closeModal() { document.getElementById("projectModal").classList.add("hidden"); }
-function detailItem(label, value) { return `<div class="detail-item"><div class="detail-label">${escapeHtml(label)}</div><div class="detail-value">${escapeHtml(value || "-")}</div></div>`; }
-function priorityBadge(priority) { const p = String(priority || "-").toLowerCase(); return `<span class="badge badge-${p}">${escapeHtml(priority || "-")}</span>`; }
-function metricBadge(value, status) { const pass = status === "PASS" || status === "ผ่าน"; return `<span class="metric-pill ${pass ? "badge-pass" : "badge-fail"}">${formatPercent(value)} / ${escapeHtml(status || "-")}</span>`; }
-function formatPercent(v) { return CarsAPI.formatPercent(v); }
+
+function renderProjectDetail(project, detail) {
+  return `
+    <div class="detail-grid">
+      ${detailItem("WBS", project.wbs)}
+      ${detailItem("ชื่องาน", project.jobName)}
+      ${detailItem("ผู้รับผิดชอบ", project.owner)}
+      ${detailItem("จังหวัด", project.province)}
+      ${detailItem("สถานะระบบ", project.systemStatus)}
+      ${detailItem("สถานะผู้ใช้", project.userStatus)}
+      ${detailItem("Priority", project.priority)}
+      ${detailItem("Ready", project.readyToClose || project.closureStatus)}
+      ${detailItem("Cost", formatPercent(project.costPercent) + " / " + safeValue(project.costStatus))}
+      ${detailItem("Material", formatPercent(project.materialPercent) + " / " + safeValue(project.materialStatus))}
+      ${detailItem("Document", formatPercent(project.documentPercent) + " / " + safeValue(project.documentStatus))}
+      ${detailItem("Time", formatPercent(project.timePercent) + " / " + safeValue(project.timeStatus))}
+    </div>
+
+    <div class="detail-section card">
+      <h3>Main Issue</h3>
+      <p>${escapeHtml(project.mainIssue || "-")}</p>
+    </div>
+
+    <div class="detail-section card">
+      <h3>Recommended Action</h3>
+      <p>${escapeHtml(project.action || "-")}</p>
+    </div>
+
+    ${renderDetailSections(detail)}
+  `;
+}
+
+
+function renderDetailSections(detail) {
+  let html = "";
+
+  if (detail.cost && detail.cost.items) {
+    html += renderCostDetail(detail.cost);
+  }
+
+  if (detail.material && detail.material.pendingItems) {
+    html += renderMaterialDetail(detail.material);
+  }
+
+  if (detail.document && detail.document.items) {
+    html += renderDocumentDetail(detail.document);
+  }
+
+  if (detail.time) {
+    html += renderTimeDetail(detail.time);
+  }
+
+  return html;
+}
+
+
+function renderCostDetail(cost) {
+  const rows = (cost.items || []).map(function (x) {
+    return `
+      <tr>
+        <td>${escapeHtml(x.type)}</td>
+        <td>${formatMoney(x.plan)}</td>
+        <td>${formatMoney(x.actual)}</td>
+        <td>${escapeHtml(x.percent)}</td>
+        <td>${escapeHtml(x.status)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <div class="detail-section card">
+      <h3>Cost Detail</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ประเภทค่าใช้จ่าย</th>
+              <th>แผน</th>
+              <th>เบิกจริง</th>
+              <th>%</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+
+function renderMaterialDetail(material) {
+  const rows = (material.pendingItems || []).map(function (x) {
+    return `
+      <tr>
+        <td>${escapeHtml(x.materialCode)}</td>
+        <td class="text-wrap">${escapeHtml(x.materialName)}</td>
+        <td>${escapeHtml(x.requiredQty)}</td>
+        <td>${escapeHtml(x.issuedQty)}</td>
+        <td>${escapeHtml(x.pendingQty)}</td>
+        <td>${formatMoney(x.pendingValue)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <div class="detail-section card">
+      <h3>Material Pending</h3>
+      <p class="muted">
+        รายการทั้งหมด ${material.totalItems || 0} รายการ /
+        ค้าง ${material.pendingCount || 0} รายการ /
+        มูลค่าค้าง ${formatMoney(material.pendingValue || 0)} บาท
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>รหัสพัสดุ</th>
+              <th>รายการพัสดุ</th>
+              <th>ต้องการ</th>
+              <th>เบิกแล้ว</th>
+              <th>ค้าง</th>
+              <th>มูลค่าค้าง</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows || `<tr><td colspan="6" class="empty-state">ไม่มีพัสดุค้าง</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+
+function renderDocumentDetail(documentDetail) {
+  const rows = (documentDetail.items || []).map(function (x) {
+    return `
+      <tr>
+        <td>${escapeHtml(x.docCode)}</td>
+        <td>${escapeHtml(x.category)}</td>
+        <td class="text-wrap">${escapeHtml(x.documentName)}</td>
+        <td>${escapeHtml(x.status)}</td>
+        <td>${escapeHtml(x.importance)}</td>
+        <td>${escapeHtml(x.required)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <div class="detail-section card">
+      <h3>Document Checklist</h3>
+      <p class="muted">
+        เอกสารทั้งหมด ${documentDetail.total || 0} รายการ /
+        ยังไม่ครบ ${documentDetail.missing || 0} รายการ
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>DocCode</th>
+              <th>หมวด</th>
+              <th>รายการเอกสาร</th>
+              <th>สถานะ</th>
+              <th>ความสำคัญ</th>
+              <th>จำเป็น</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <br>
+      <button onclick="exportProjectPdf('${escapeAttr(documentDetail.wbs)}')">
+        Export PDF Checklist
+      </button>
+    </div>
+  `;
+}
+
+
+function renderTimeDetail(time) {
+  return `
+    <div class="detail-section card">
+      <h3>Time Detail</h3>
+      <div class="detail-grid">
+        ${detailItem("Plan Time", time.planTime)}
+        ${detailItem("Actual Time", time.actualTime)}
+        ${detailItem("Time %", time.timePercent)}
+        ${detailItem("Time Status", time.timeStatus)}
+      </div>
+    </div>
+  `;
+}
+
+
+function closeModal() {
+  const modal = document.getElementById("projectModal");
+  if (modal) {
+    modal.classList.add("hidden");
+  }
+}
+
+
+/* =========================
+   11) Export
+========================= */
+
+async function exportExcel() {
+  try {
+    const result = await CarsAPI.exportExcel();
+
+    if (result && result.url) {
+      window.open(result.url, "_blank");
+    } else {
+      alert("ไม่พบลิงก์ Export Excel");
+    }
+  } catch (err) {
+    alert("Export Excel ไม่สำเร็จ: " + err.message);
+  }
+}
+
+
+async function exportProjectPdf(wbs) {
+  try {
+    const result = await CarsAPI.exportPdf(wbs);
+
+    if (result && result.url) {
+      window.open(result.url, "_blank");
+    } else {
+      alert("ไม่พบลิงก์ Export PDF");
+    }
+  } catch (err) {
+    alert("Export PDF ไม่สำเร็จ: " + err.message);
+  }
+}
+
+
+/* =========================
+   12) AI Assistant
+========================= */
 
 function askAssistant() {
   const input = document.getElementById("assistantInput");
+  if (!input) return;
+
   const text = input.value.trim();
   if (!text) return;
-  addChat("user", text);
+
+  addChatMessage("user", text);
   input.value = "";
-  setTimeout(() => addChat("bot", localAssistant(text)), 200);
+
+  const answer = localAssistant(text);
+
+  setTimeout(function () {
+    addChatMessage("bot", answer);
+  }, 250);
 }
 
-function addChat(type, text) {
+
+function addChatMessage(type, text) {
   const box = document.getElementById("chatBox");
+  if (!box) return;
+
   const div = document.createElement("div");
   div.className = type === "user" ? "user-msg" : "bot-msg";
   div.innerHTML = escapeHtml(text).replace(/\n/g, "<br>");
+
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
 
+
 function localAssistant(text) {
   const q = text.toLowerCase();
-  const found = allProjects.find(p => String(p.wbs || "").toLowerCase().includes(q) || q.includes(String(p.wbs || "").toLowerCase()));
-  if (found) return `พบงาน ${found.wbs}\n${found.jobName}\n\nผู้รับผิดชอบ: ${found.owner}\nสถานะ: ${found.systemStatus || "-"} / ${found.userStatus || "-"}\nCost: ${formatPercent(found.costPercent)} / ${found.costStatus}\nMaterial: ${formatPercent(found.materialPercent)} / ${found.materialStatus}\nDocument: ${formatPercent(found.documentPercent)} / ${found.documentStatus}\nTime: ${formatPercent(found.timePercent)} / ${found.timeStatus}\nปัญหาหลัก: ${found.mainIssue || "-"}\nPriority: ${found.priority || "-"}`;
-  const owner = allProjects.filter(p => q.includes(String(p.owner || "").toLowerCase()));
-  if (owner.length) {
-    const notReady = owner.filter(p => p.readyToClose !== "YES" && p.closureStatus !== "พร้อมปิดงาน");
-    return `พบงานของ ${owner[0].owner} จำนวน ${owner.length} งาน\nยังไม่พร้อม ${notReady.length} งาน\n\nงานเร่งด่วน:\n${notReady.slice(0, 5).map((p, i) => `${i + 1}) ${p.wbs} - ${p.mainIssue || "-"}`).join("\n")}`;
+
+  const byWbs = allProjects.find(function (p) {
+    return String(p.wbs || "").toLowerCase().includes(q) ||
+      q.includes(String(p.wbs || "").toLowerCase());
+  });
+
+  if (byWbs) {
+    return projectSummaryText(byWbs);
   }
+
+  const byOwner = allProjects.filter(function (p) {
+    return String(p.owner || "").toLowerCase().includes(q);
+  });
+
+  if (byOwner.length) {
+    return ownerSummaryText(byOwner);
+  }
+
   if (q.includes("ติดพัสดุ")) {
-    const list = allProjects.filter(p => p.materialStatus !== "PASS");
-    return `งานติดพัสดุ ${list.length} งาน\n` + list.slice(0, 10).map((p, i) => `${i + 1}) ${p.wbs} ${formatPercent(p.materialPercent)}`).join("\n");
+    const list = allProjects.filter(function (p) {
+      return !isPassStatus(p.materialStatus);
+    });
+
+    return "งานติดพัสดุ " + list.length + " งาน\n" +
+      list.slice(0, 10).map(function (p, i) {
+        return (i + 1) + ") " + p.wbs + " " + formatPercent(p.materialPercent);
+      }).join("\n");
   }
+
+  if (q.includes("ติดเอกสาร")) {
+    const list = allProjects.filter(function (p) {
+      return !isPassStatus(p.documentStatus);
+    });
+
+    return "งานติดเอกสาร " + list.length + " งาน\n" +
+      list.slice(0, 10).map(function (p, i) {
+        return (i + 1) + ") " + p.wbs;
+      }).join("\n");
+  }
+
   if (q.includes("พร้อมปิด")) {
-    const list = allProjects.filter(p => p.readyToClose === "YES" || p.closureStatus === "พร้อมปิดงาน");
-    return `งานพร้อมปิด ${list.length} งาน\n` + list.slice(0, 10).map((p, i) => `${i + 1}) ${p.wbs}`).join("\n");
+    const list = allProjects.filter(function (p) {
+      return String(p.readyToClose || "").toUpperCase() === "YES" ||
+        p.closureStatus === "พร้อมปิดงาน";
+    });
+
+    return "งานพร้อมปิด " + list.length + " งาน\n" +
+      list.slice(0, 10).map(function (p, i) {
+        return (i + 1) + ") " + p.wbs + " - " + p.jobName;
+      }).join("\n");
   }
-  return "ยังไม่พบคำตอบ ลองพิมพ์ WBS, ชื่อผู้รับผิดชอบ, ติดพัสดุ หรือ พร้อมปิด";
+
+  return AI_CONFIG && AI_CONFIG.fallback
+    ? AI_CONFIG.fallback
+    : "ยังไม่พบข้อมูลจากคำถามนี้";
 }
 
-function escapeHtml(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
-function escapeAttr(value) { return escapeHtml(value).replaceAll("`", ""); }
+
+function projectSummaryText(p) {
+  return `
+พบงาน ${p.wbs}
+
+${p.jobName}
+
+ผู้รับผิดชอบ: ${p.owner}
+สถานะ: ${p.systemStatus || "-"} / ${p.userStatus || "-"}
+
+Cost: ${formatPercent(p.costPercent)} / ${p.costStatus || "-"}
+Material: ${formatPercent(p.materialPercent)} / ${p.materialStatus || "-"}
+Document: ${formatPercent(p.documentPercent)} / ${p.documentStatus || "-"}
+Time: ${formatPercent(p.timePercent)} / ${p.timeStatus || "-"}
+
+ปัญหาหลัก: ${p.mainIssue || "-"}
+Priority: ${p.priority || "-"}
+  `.trim();
+}
+
+
+function ownerSummaryText(list) {
+  const owner = list[0].owner || "-";
+  const notReady = list.filter(function (p) {
+    return String(p.readyToClose || "").toUpperCase() !== "YES" &&
+      p.closureStatus !== "พร้อมปิดงาน";
+  });
+
+  return `
+พบงานของ ${owner} จำนวน ${list.length} งาน
+ยังไม่พร้อม ${notReady.length} งาน
+
+งานเร่งด่วน:
+${notReady.slice(0, 8).map(function (p, i) {
+    return (i + 1) + ") " + p.wbs + " - " + (p.mainIssue || "-");
+  }).join("\n")}
+  `.trim();
+}
+
+
+/* =========================
+   13) UI Helpers
+========================= */
+
+function priorityBadge(priority) {
+  const p = String(priority || "-").toUpperCase();
+
+  let cls = "badge-p3";
+
+  if (p === "P1") cls = "badge-p1";
+  if (p === "P2") cls = "badge-p2";
+  if (p === "P3") cls = "badge-p3";
+  if (p === "P4") cls = "badge-p4";
+
+  return `<span class="badge ${cls}">${escapeHtml(p)}</span>`;
+}
+
+
+function statusBadge(systemStatus, userStatus) {
+  const sys = String(systemStatus || "-").toUpperCase();
+  const usr = String(userStatus || "-").toUpperCase();
+
+  let cls = "";
+
+  if (sys === "REL") cls = "status-rel";
+  if (sys === "TECO") cls = "status-teco";
+  if (sys === "CLSD") cls = "status-clsd";
+
+  return `<span class="status-pill ${cls}">${escapeHtml(sys)} / ${escapeHtml(usr)}</span>`;
+}
+
+
+function metricBadge(value, status, type, wbs) {
+  const s = String(status || "-").toUpperCase();
+
+  let cls = "metric-warning";
+
+  if (isPassStatus(s)) {
+    cls = "metric-pass";
+  } else if (s === "FAIL" || s === "NO" || s === "-") {
+    cls = "metric-fail";
+  }
+
+  return `
+    <span
+      class="metric-pill ${cls}"
+      onclick="event.stopPropagation(); openProjectDetail('${escapeAttr(wbs)}')"
+      title="คลิกเพื่อดูรายละเอียด"
+    >
+      ${escapeHtml(formatPercent(value))} / ${escapeHtml(status || "-")}
+    </span>
+  `;
+}
+
+
+function detailItem(label, value) {
+  return `
+    <div class="detail-item">
+      <div class="detail-label">${escapeHtml(label)}</div>
+      <div class="detail-value">${escapeHtml(safeValue(value))}</div>
+    </div>
+  `;
+}
+
+
+/* =========================
+   14) Format Helpers
+========================= */
+
+function safeValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+
+  return value;
+}
+
+
+function formatPercent(value) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+
+  if (typeof value === "number") {
+    if (value <= 1) {
+      return (value * 100).toFixed(2) + "%";
+    }
+
+    return value.toFixed(2) + "%";
+  }
+
+  const text = String(value);
+
+  if (text.includes("%")) {
+    return text;
+  }
+
+  const n = Number(text);
+
+  if (!Number.isNaN(n)) {
+    return n.toFixed(2) + "%";
+  }
+
+  return text;
+}
+
+
+function formatMoney(value) {
+  const n = Number(String(value || 0).replace(/,/g, ""));
+
+  if (Number.isNaN(n)) {
+    return "0.00";
+  }
+
+  return n.toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+
+function isPassStatus(value) {
+  const s = String(value || "").trim().toUpperCase();
+
+  return s === "PASS" ||
+    s === "ผ่าน" ||
+    s === "YES" ||
+    s === "ครบ";
+}
+
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("`", "");
+}
