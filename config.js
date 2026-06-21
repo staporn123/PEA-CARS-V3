@@ -9,7 +9,7 @@ const CONFIG = {
   // Google Apps Script API URL
   // =========================================
   API_URL:
-  "https://script.google.com/macros/s/AKfycbxAZyCDn0bHcfaj0vxnOTMQRim8h7aiiXQP83VaqQOB82hrAggRi3C1-_Ap7Jay5tth/exec",
+  "https://script.google.com/macros/s/AKfycbxTelQNLNLMdDpmlgSEf51XLrY4QnFSqlYVUaYiLl-vqXGjv0Wwq6WERtDIvotQia9V/exec",
 
   // =========================================
   // Application Information
