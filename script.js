@@ -239,8 +239,8 @@ function renderStatusChart(data) {
     parent.classList.add("status-chart-card");
   }
 
-  canvas.style.maxWidth = "360px";
-  canvas.style.maxHeight = "300px";
+  canvas.style.maxWidth = "450px";
+  canvas.style.maxHeight = "340px";
   canvas.style.margin = "0 auto";
   canvas.style.display = "block";
 
@@ -268,8 +268,8 @@ function renderStatusChart(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: "58%",
-      radius: "78%",
+      cutout: "62%",
+      radius: "92%",
       animation: {
         animateRotate: true,
         animateScale: true,
@@ -286,7 +286,7 @@ function renderStatusChart(data) {
       },
       plugins: {
         legend: {
-          position: "right",
+          position: "bottom",
           align: "center",
           labels: {
             color: "#f8fafc",
@@ -294,9 +294,9 @@ function renderStatusChart(data) {
             pointStyle: "circle",
             padding: 18,
             font: {
-              size: 13,
-              weight: "700"
-            },
+              size: 14,
+                weight: "bold"
+                }
             generateLabels: function (chart) {
               const dataset = chart.data.datasets[0];
               return chart.data.labels.map(function (label, i) {
