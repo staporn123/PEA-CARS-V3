@@ -10,7 +10,6 @@ let alertCenter = [];
 
 let statusChart = null;
 let issueChart = null;
-
 let selectedProject = null;
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -162,6 +161,10 @@ function renderLastUpdate() {
   el.textContent = "อัปเดตล่าสุด: " + now.toLocaleString("th-TH");
 }
 
+/* =========================
+   KPI
+========================= */
+
 function renderKpi(data) {
   const kpiGrid = document.getElementById("kpiGrid");
   if (!kpiGrid) return;
@@ -192,24 +195,78 @@ function renderKpi(data) {
   }).join("");
 }
 
+/* =========================
+   Charts
+========================= */
+
 function renderCharts(data) {
   renderStatusChart(data);
   renderIssueChart(data);
+}
+
+function prepareStatusChartLayout(canvas) {
+  const card = canvas.closest(".card") || canvas.parentElement;
+  if (!card) return null;
+
+  card.classList.add("status-chart-card");
+
+  let body = card.querySelector(".chart-body");
+  let canvasWrap = card.querySelector(".status-canvas-wrap");
+  let legend = card.querySelector(".status-legend-custom");
+
+  if (!body) {
+    body = document.createElement("div");
+    body.className = "chart-body";
+    canvasWrap = document.createElement("div");
+    canvasWrap.className = "status-canvas-wrap";
+    legend = document.createElement("div");
+    legend.className = "status-legend-custom";
+
+    canvas.parentNode.insertBefore(body, canvas);
+    canvasWrap.appendChild(canvas);
+    body.appendChild(canvasWrap);
+    body.appendChild(legend);
+  }
+
+  return legend;
+}
+
+function renderStatusLegend(legendEl, ready, notReady, closed) {
+  if (!legendEl) return;
+
+  const total = ready + notReady + closed;
+
+  const rows = [
+    { label: "พร้อมปิด", value: ready, color: "#22c55e" },
+    { label: "ยังไม่พร้อม", value: notReady, color: "#ff3b3b" },
+    { label: "ปิดแล้ว", value: closed, color: "#38bdf8" }
+  ];
+
+  legendEl.innerHTML = rows.map(function (r) {
+    const percent = total ? ((r.value / total) * 100).toFixed(1) : "0.0";
+    return `
+      <div class="status-legend-row">
+        <span class="status-dot" style="background:${r.color}; color:${r.color};"></span>
+        <span class="status-legend-label">${escapeHtml(r.label)}</span>
+        <span class="status-legend-value">${escapeHtml(r.value)} (${percent}%)</span>
+      </div>
+    `;
+  }).join("");
 }
 
 function renderStatusChart(data) {
   const canvas = document.getElementById("statusChart");
   if (!canvas || typeof Chart === "undefined") return;
 
-  const parent = canvas.parentElement;
-  if (parent) parent.classList.add("status-chart-card");
-
-  if (statusChart) statusChart.destroy();
-
   const ready = Number(data.ready || 0);
   const notReady = Number(data.notReady || 0);
   const closed = Number(data.closed || 0);
   const total = ready + notReady + closed;
+
+  const legendEl = prepareStatusChartLayout(canvas);
+  renderStatusLegend(legendEl, ready, notReady, closed);
+
+  if (statusChart) statusChart.destroy();
 
   const centerTextPlugin = {
     id: "centerTextPlugin",
@@ -225,17 +282,20 @@ function renderStatusChart(data) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
-      ctx.fillStyle = "#cbd5e1";
-      ctx.font = "800 14px Segoe UI";
-      ctx.fillText("รวมทั้งสิ้น", x, y - 34);
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "800 16px Segoe UI";
+      ctx.fillText("รวมทั้งสิ้น", x, y - 42);
 
       ctx.fillStyle = "#ffffff";
-      ctx.font = "950 38px Segoe UI";
-      ctx.fillText(String(total), x, y + 2);
+      ctx.shadowColor = "rgba(255,255,255,.35)";
+      ctx.shadowBlur = 10;
+      ctx.font = "950 46px Segoe UI";
+      ctx.fillText(String(total), x, y + 4);
 
-      ctx.fillStyle = "#cbd5e1";
-      ctx.font = "800 14px Segoe UI";
-      ctx.fillText("โครงการ", x, y + 38);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "800 16px Segoe UI";
+      ctx.fillText("โครงการ", x, y + 48);
 
       ctx.restore();
     }
@@ -247,59 +307,31 @@ function renderStatusChart(data) {
       labels: ["พร้อมปิด", "ยังไม่พร้อม", "ปิดแล้ว"],
       datasets: [{
         data: [ready, notReady, closed],
-        backgroundColor: ["#22c55e", "#ef4444", "#38bdf8"],
-        hoverBackgroundColor: ["#4ade80", "#f87171", "#7dd3fc"],
-        borderColor: "rgba(15, 23, 42, 0.98)",
-        borderWidth: 5,
-        hoverOffset: 10,
-        spacing: 3
+        backgroundColor: ["#22c55e", "#ff3b3b", "#38bdf8"],
+        hoverBackgroundColor: ["#4ade80", "#ff6464", "#7dd3fc"],
+        borderColor: "#0f172a",
+        borderWidth: 3,
+        spacing: 1,
+        hoverOffset: 8
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: "68%",
-      radius: "82%",
+      cutout: "58%",
+      radius: "92%",
+      layout: {
+        padding: 8
+      },
       animation: {
         animateRotate: true,
         animateScale: true,
         duration: 900,
         easing: "easeOutQuart"
       },
-      layout: {
-        padding: 12
-      },
       plugins: {
         legend: {
-          position: "right",
-          align: "center",
-          labels: {
-            color: "#f8fafc",
-            usePointStyle: true,
-            pointStyle: "circle",
-            padding: 18,
-            font: {
-              size: 14,
-              weight: "bold"
-            },
-            generateLabels: function (chart) {
-              const dataset = chart.data.datasets[0];
-
-              return chart.data.labels.map(function (label, i) {
-                const value = Number(dataset.data[i] || 0);
-                const percent = total ? ((value / total) * 100).toFixed(1) : "0.0";
-
-                return {
-                  text: label + "   " + value + " (" + percent + "%)",
-                  fillStyle: dataset.backgroundColor[i],
-                  strokeStyle: dataset.backgroundColor[i],
-                  lineWidth: 0,
-                  hidden: false,
-                  index: i
-                };
-              });
-            }
-          }
+          display: false
         },
         tooltip: {
           backgroundColor: "rgba(15, 23, 42, 0.96)",
@@ -326,7 +358,7 @@ function renderIssueChart(data) {
   const canvas = document.getElementById("issueChart");
   if (!canvas || typeof Chart === "undefined") return;
 
-  const parent = canvas.parentElement;
+  const parent = canvas.closest(".card") || canvas.parentElement;
   if (parent) parent.classList.add("issue-chart-card");
 
   if (issueChart) issueChart.destroy();
@@ -351,8 +383,7 @@ function renderIssueChart(data) {
       ctx.font = "900 15px Segoe UI";
 
       meta.data.forEach(function (bar, index) {
-        const value = values[index];
-        ctx.fillText(String(value), bar.x, bar.y - 8);
+        ctx.fillText(String(values[index]), bar.x, bar.y - 8);
       });
 
       ctx.restore();
@@ -366,12 +397,12 @@ function renderIssueChart(data) {
       datasets: [{
         label: "จำนวนงาน",
         data: values,
-        backgroundColor: ["#ef4444", "#fb923c", "#facc15", "#38bdf8"],
-        hoverBackgroundColor: ["#f87171", "#fdba74", "#fde047", "#7dd3fc"],
-        borderRadius: 14,
+        backgroundColor: ["#ff3b3b", "#fb923c", "#facc15", "#38bdf8"],
+        hoverBackgroundColor: ["#ff6464", "#fdba74", "#fde047", "#7dd3fc"],
+        borderRadius: 8,
         borderSkipped: false,
-        barPercentage: 0.55,
-        categoryPercentage: 0.68
+        barPercentage: 0.5,
+        categoryPercentage: 0.66
       }]
     },
     options: {
@@ -384,13 +415,14 @@ function renderIssueChart(data) {
       plugins: {
         legend: {
           position: "top",
+          align: "end",
           labels: {
             color: "#f8fafc",
-            boxWidth: 24,
-            boxHeight: 10,
-            padding: 18,
+            boxWidth: 12,
+            boxHeight: 12,
+            padding: 16,
             font: {
-              size: 14,
+              size: 13,
               weight: "bold"
             }
           }
@@ -414,19 +446,20 @@ function renderIssueChart(data) {
             }
           },
           grid: {
-            color: "rgba(148,163,184,0.10)",
+            color: "rgba(148,163,184,0.08)",
             drawBorder: false
           }
         },
         y: {
           beginAtZero: true,
-          suggestedMax: Math.max(...values, 10) + 10,
+          suggestedMax: Math.max.apply(null, values.concat([10])) + 10,
           ticks: {
             color: "#f8fafc",
             precision: 0
           },
           grid: {
-            color: "rgba(148,163,184,0.14)",
+            color: "rgba(148,163,184,0.16)",
+            borderDash: [3, 4],
             drawBorder: false
           }
         }
@@ -436,12 +469,15 @@ function renderIssueChart(data) {
   });
 }
 
+/* =========================
+   Tables
+========================= */
+
 function renderProjectTable(rows) {
   const tbody = document.getElementById("projectTable");
   const count = document.getElementById("projectCount");
 
   if (!tbody) return;
-
   if (count) count.textContent = rows.length + " งาน";
 
   if (!rows.length) {
@@ -482,10 +518,10 @@ function projectRowTemplate(p) {
       <td class="text-wrap">${escapeHtml(p.jobName)}</td>
       <td>${escapeHtml(p.owner)}</td>
       <td>${statusBadge(p.systemStatus, p.userStatus)}</td>
-      <td>${metricBadge(p.costPercent, p.costStatus, "cost", wbs)}</td>
-      <td>${metricBadge(p.materialPercent, p.materialStatus, "material", wbs)}</td>
-      <td>${metricBadge(p.documentPercent, p.documentStatus, "document", wbs)}</td>
-      <td>${metricBadge(p.timePercent, p.timeStatus, "time", wbs)}</td>
+      <td>${metricBadge(p.costPercent, p.costStatus, wbs)}</td>
+      <td>${metricBadge(p.materialPercent, p.materialStatus, wbs)}</td>
+      <td>${metricBadge(p.documentPercent, p.documentStatus, wbs)}</td>
+      <td>${metricBadge(p.timePercent, p.timeStatus, wbs)}</td>
       <td>${escapeHtml(p.readyToClose || p.closureStatus || "-")}</td>
     </tr>
   `;
@@ -573,6 +609,10 @@ function renderAlertCenter(rows) {
     `;
   }).join("");
 }
+
+/* =========================
+   Modal
+========================= */
 
 async function openProjectDetail(wbs) {
   try {
@@ -783,6 +823,10 @@ function closeModal() {
   if (modal) modal.classList.add("hidden");
 }
 
+/* =========================
+   Export
+========================= */
+
 async function exportExcel() {
   try {
     const result = await CarsAPI.exportExcel();
@@ -810,6 +854,10 @@ async function exportProjectPdf(wbs) {
     alert("Export PDF ไม่สำเร็จ: " + err.message);
   }
 }
+
+/* =========================
+   AI Assistant
+========================= */
 
 function askAssistant() {
   const input = document.getElementById("assistantInput");
@@ -930,6 +978,10 @@ ${notReady.slice(0, 8).map(function (p, i) {
   `.trim();
 }
 
+/* =========================
+   UI Helpers
+========================= */
+
 function priorityBadge(priority) {
   const p = String(priority || "-").toUpperCase();
 
@@ -956,7 +1008,7 @@ function statusBadge(systemStatus, userStatus) {
   return `<span class="status-pill ${cls}">${escapeHtml(sys)} / ${escapeHtml(usr)}</span>`;
 }
 
-function metricBadge(value, status, type, wbs) {
+function metricBadge(value, status, wbs) {
   const s = String(status || "-").toUpperCase();
 
   let cls = "metric-warning";
@@ -986,6 +1038,10 @@ function detailItem(label, value) {
     </div>
   `;
 }
+
+/* =========================
+   Format Helpers
+========================= */
 
 function safeValue(value) {
   if (value === null || value === undefined || value === "") return "-";
