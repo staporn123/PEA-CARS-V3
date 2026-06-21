@@ -1,198 +1,110 @@
 /* =====================================================
    PEA CARS+ V4 Professional
-   api.js
+   File: api.js
+   Purpose: เชื่อม GitHub Pages กับ Apps Script API ด้วย JSONP
 ===================================================== */
 
 class CarsAPI {
-
-    // ======================
-    // JSONP Request
-    // ======================
-    static request(action, params = {}) {
-
-        return new Promise((resolve, reject) => {
-
-            const callbackName =
-                'jsonp_callback_' + Math.round(Math.random() * 1000000);
-
-            params.action = action;
-            params.callback = callbackName;
-
-            const queryString = new URLSearchParams(params).toString();
-
-            const script = document.createElement('script');
-
-            script.src =
-                CONFIG.API_URL + '?' + queryString;
-
-            window[callbackName] = function (data) {
-
-                resolve(data);
-
-                delete window[callbackName];
-
-                document.body.removeChild(script);
-
-            };
-
-            script.onerror = function () {
-
-                reject(new Error("Failed to fetch"));
-
-                delete window[callbackName];
-
-            };
-
-            document.body.appendChild(script);
-
-        });
-
-    }
-
-
-
-    // ===================================
-    // Dashboard
-    // ===================================
-
-    static async getDashboard() {
-
-        return await this.request('dashboard');
-
-    }
-
-
-    // ===================================
-    // Projects
-    // ===================================
-
-    static async getProjects() {
-
-        return await this.request('projects');
-
-    }
-
-
-    // ===================================
-    // Project Detail
-    // ===================================
-
-    static async getProjectDetail(wbs) {
-
-        return await this.request('projectdetail', {
-
-            wbs: wbs
-
-        });
-
-    }
-
-
-    // ===================================
-    // Work Queue
-    // ===================================
-
-    static async getWorkQueue() {
-
-        return await this.request('workqueue');
-
-    }
-
-
-    // ===================================
-    // Alert Center
-    // ===================================
-
-    static async getAlertCenter() {
-
-        return await this.request('alerts');
-
-    }
-
-
-    // ===================================
-    // Cost Detail
-    // ===================================
-
-    static async getCostDetail(wbs) {
-
-        return await this.request('costdetail', {
-
-            wbs: wbs
-
-        });
-
-    }
-
-
-    // ===================================
-    // Material Detail
-    // ===================================
-
-    static async getMaterialDetail(wbs) {
-
-        return await this.request('materialdetail', {
-
-            wbs: wbs
-
-        });
-
-    }
-
-
-    // ===================================
-    // Document Detail
-    // ===================================
-
-    static async getDocumentDetail(wbs) {
-
-        return await this.request('documentdetail', {
-
-            wbs: wbs
-
-        });
-
-    }
-
-
-    // ===================================
-    // Time Detail
-    // ===================================
-
-    static async getTimeDetail(wbs) {
-
-        return await this.request('timedetail', {
-
-            wbs: wbs
-
-        });
-
-    }
-
-
-    // ===================================
-    // Export Excel
-    // ===================================
-
-    static async exportExcel() {
-
-        return await this.request('exportexcel');
-
-    }
-
-
-    // ===================================
-    // Export PDF
-    // ===================================
-
-    static async exportPdf(wbs) {
-
-        return await this.request('exportpdf', {
-
-            wbs: wbs
-
-        });
-
-    }
-
+  static request(action, params = {}) {
+    return new Promise((resolve, reject) => {
+      if (typeof API_URL === "undefined" || !API_URL) {
+        reject(new Error("ไม่พบ API_URL ใน config.js"));
+        return;
+      }
+
+      const callbackName =
+        "peaCarsJsonp_" + Date.now() + "_" + Math.floor(Math.random() * 1000000);
+
+      const query = {
+        action: action,
+        callback: callbackName,
+        _t: Date.now(),
+        ...params
+      };
+
+      const queryString = new URLSearchParams(query).toString();
+      const script = document.createElement("script");
+
+      let timer = setTimeout(() => {
+        cleanup();
+        reject(new Error("API Timeout"));
+      }, typeof API_CONFIG !== "undefined" ? API_CONFIG.timeout : 30000);
+
+      function cleanup() {
+        clearTimeout(timer);
+        delete window[callbackName];
+
+        if (script && script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+      }
+
+      window[callbackName] = function (data) {
+        cleanup();
+
+        if (data && data.success === false) {
+          reject(new Error(data.message || "API Error"));
+          return;
+        }
+
+        resolve(data);
+      };
+
+      script.onerror = function () {
+        cleanup();
+        reject(new Error("โหลดข้อมูลไม่สำเร็จ"));
+      };
+
+      script.src = API_URL + "?" + queryString;
+      document.body.appendChild(script);
+    });
+  }
+
+  static getDashboard() {
+    return this.request("dashboard");
+  }
+
+  static getProjects() {
+    return this.request("projects");
+  }
+
+  static getProjectDetail(wbs) {
+    return this.request("projectdetail", { wbs });
+  }
+
+  static getWorkQueue() {
+    return this.request("workqueue");
+  }
+
+  static getAlertCenter() {
+    return this.request("alerts");
+  }
+
+  static getCostDetail(wbs) {
+    return this.request("costdetail", { wbs });
+  }
+
+  static getMaterialDetail(wbs) {
+    return this.request("materialdetail", { wbs });
+  }
+
+  static getDocumentDetail(wbs) {
+    return this.request("documentdetail", { wbs });
+  }
+
+  static getTimeDetail(wbs) {
+    return this.request("timedetail", { wbs });
+  }
+
+  static exportExcel() {
+    return this.request("exportexcel");
+  }
+
+  static exportPdf(wbs) {
+    return this.request("exportpdf", { wbs });
+  }
+
+  static ping() {
+    return this.request("ping");
+  }
 }
