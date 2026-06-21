@@ -775,15 +775,41 @@ function renderMaterialDetail(material) {
 }
 
 function renderDocumentDetail(documentDetail) {
-  const rows = (documentDetail.items || []).map(function (x) {
+  const items = documentDetail.items || [];
+  const wbs = documentDetail.wbs || "";
+
+  const rows = items.map(function (x, index) {
+    const currentStatus = String(x.status || "ยังไม่ตรวจ");
+
     return `
       <tr>
         <td>${escapeHtml(x.docCode)}</td>
         <td>${escapeHtml(x.category)}</td>
         <td class="text-wrap">${escapeHtml(x.documentName || x.docName)}</td>
-        <td>${documentStatusBadge(x.status)}</td>
+        <td>
+          <select
+            class="doc-status-select"
+            data-row="${escapeAttr(x.row)}"
+            data-doc-code="${escapeAttr(x.docCode)}"
+            data-index="${index}"
+          >
+            <option value="ยังไม่ตรวจ" ${currentStatus === "ยังไม่ตรวจ" ? "selected" : ""}>ยังไม่ตรวจ</option>
+            <option value="ครบ" ${currentStatus === "ครบ" ? "selected" : ""}>ครบ</option>
+            <option value="ขาด" ${currentStatus === "ขาด" ? "selected" : ""}>ขาด</option>
+            <option value="ไม่เกี่ยวข้อง" ${currentStatus === "ไม่เกี่ยวข้อง" ? "selected" : ""}>ไม่เกี่ยวข้อง</option>
+          </select>
+        </td>
         <td>${escapeHtml(x.importance)}</td>
         <td>${escapeHtml(x.required)}</td>
+        <td>
+          <input
+            class="doc-remark-input"
+            type="text"
+            data-row="${escapeAttr(x.row)}"
+            placeholder="หมายเหตุ"
+            value="${escapeAttr(x.remark || "")}"
+          />
+        </td>
       </tr>
     `;
   }).join("");
@@ -791,10 +817,12 @@ function renderDocumentDetail(documentDetail) {
   return `
     <div class="detail-section card">
       <h3>Document Checklist</h3>
+
       <p class="muted">
-        เอกสารทั้งหมด ${documentDetail.total || 0} รายการ /
+        เอกสารทั้งหมด ${documentDetail.total || items.length || 0} รายการ /
         ยังไม่ครบ ${documentDetail.missing || 0} รายการ
       </p>
+
       <div class="table-wrap">
         <table>
           <thead>
@@ -805,17 +833,76 @@ function renderDocumentDetail(documentDetail) {
               <th>สถานะ</th>
               <th>ความสำคัญ</th>
               <th>จำเป็น</th>
+              <th>หมายเหตุ</th>
             </tr>
           </thead>
-          <tbody>${rows || `<tr><td colspan="6" class="empty-state">ไม่พบข้อมูลเอกสาร</td></tr>`}</tbody>
+          <tbody>
+            ${rows || `<tr><td colspan="7" class="empty-state">ไม่พบข้อมูลเอกสาร</td></tr>`}
+          </tbody>
         </table>
       </div>
+
       <br>
-      <button onclick="exportProjectPdf('${escapeAttr(documentDetail.wbs)}')">
+
+      <button onclick="saveDocumentChecklistFromModal('${escapeAttr(wbs)}')">
+        💾 บันทึก Checklist
+      </button>
+
+      <button onclick="exportProjectPdf('${escapeAttr(wbs)}')">
         Export PDF Checklist
       </button>
     </div>
   `;
+}
+
+async function saveDocumentChecklistFromModal(wbs) {
+  try {
+    const selects = document.querySelectorAll(".doc-status-select");
+    const remarks = document.querySelectorAll(".doc-remark-input");
+
+    const remarkMap = {};
+    remarks.forEach(function (input) {
+      remarkMap[String(input.dataset.row)] = input.value || "";
+    });
+
+    const items = Array.from(selects).map(function (select) {
+      const row = Number(select.dataset.row || 0);
+
+      return {
+        row: row,
+        status: select.value,
+        remark: remarkMap[String(row)] || "",
+        auditor: "GitHub Web",
+        missingQty: select.value === "ขาด" ? 1 : 0
+      };
+    }).filter(function (item) {
+      return item.row && item.row >= 2;
+    });
+
+    if (!items.length) {
+      alert("ไม่พบรายการเอกสารสำหรับบันทึก");
+      return;
+    }
+
+    const ok = confirm("ยืนยันบันทึก Checklist จำนวน " + items.length + " รายการ?");
+    if (!ok) return;
+
+    const result = await CarsAPI.saveChecklist(items);
+
+    if (result && result.success === false) {
+      alert("บันทึกไม่สำเร็จ: " + (result.message || ""));
+      return;
+    }
+
+    alert("บันทึก Checklist สำเร็จ");
+
+    closeModal();
+    await loadAllData();
+
+  } catch (err) {
+    console.error(err);
+    alert("บันทึก Checklist ไม่สำเร็จ: " + err.message);
+  }
 }
 
 function renderTimeDetail(time) {
