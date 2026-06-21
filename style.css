@@ -911,7 +911,11 @@ box-shadow:
 }
 
 #statusChart {
-  max-width: 330px !important;
-  max-height: 260px !important;
-  margin: auto;
+
+    max-width: 430px !important;
+
+    max-height: 330px !important;
+
+    margin:auto;
+
 }
