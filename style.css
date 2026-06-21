@@ -303,7 +303,9 @@ button:disabled {
 }
 
 .kpi-card{
+
     position:relative;
+
     overflow:hidden;
 
     min-height:135px;
@@ -325,6 +327,7 @@ button:disabled {
     0 18px 45px rgba(0,0,0,.35);
 
     transition:.25s;
+
 }
 
 .kpi-card:hover{
@@ -363,19 +366,52 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
 }
+.kpi-icon{
+
+  width:46px;
+  height:46px;
+
+  display:flex;
+  justify-content:center;
+  align-items:center;
+
+  border-radius:16px;
+
+  font-size:22px;
+
+  background:rgba(255,255,255,.05);
+
+  margin-bottom:12px;
+
+}
 
 /* =========================
    Card / Chart
 ========================= */
 
-.card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  background: rgba(17, 24, 39, 0.86);
-  box-shadow: var(--shadow-card);
+.card{
+
+    border-radius:24px;
+
+    background:
+    rgba(17,24,39,.88);
+
+    border:
+    1px solid rgba(255,255,255,.05);
+
+    box-shadow:
+    0 20px 50px rgba(0,0,0,.35);
+
+    transition:.2s;
+
 }
 
+.card:hover{
+
+    box-shadow:
+    0 25px 60px rgba(0,0,0,.45);
+
+}
 .card h3 {
   margin: 0 0 16px;
   font-size: 18px;
@@ -450,8 +486,13 @@ tbody tr {
   transition: background 0.16s ease;
 }
 
-tbody tr:hover td {
-  background: rgba(59, 130, 246, 0.08);
+tbody tr:hover td{
+
+background:
+rgba(59,130,246,.10);
+
+transition:.15s;
+
 }
 
 tbody tr.clickable {
@@ -595,14 +636,26 @@ td.text-wrap {
   display: none;
 }
 
-.modal-box {
-  width: min(1100px, 96vw);
-  max-height: 90vh;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  background: #0f172a;
-  box-shadow: 0 35px 110px rgba(0, 0, 0, 0.58);
+.modal-box{
+
+width:min(1200px,96vw);
+
+max-height:92vh;
+
+overflow:auto;
+
+border-radius:28px;
+
+background:#0f172a;
+
+border:
+
+1px solid rgba(255,255,255,.05);
+
+box-shadow:
+
+0 50px 120px rgba(0,0,0,.65);
+
 }
 
 .modal-head {
@@ -851,4 +904,14 @@ td.text-wrap {
   td {
     padding: 10px 11px;
   }
+}
+/* Donut Chart Size */
+.status-chart-card {
+  min-height: 330px;
+}
+
+#statusChart {
+  max-width: 330px !important;
+  max-height: 260px !important;
+  margin: auto;
 }
