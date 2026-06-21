@@ -229,18 +229,15 @@ function renderCharts(data) {
   renderIssueChart(data);
 }
 
-
 function renderStatusChart(data) {
   const canvas = document.getElementById("statusChart");
   if (!canvas || typeof Chart === "undefined") return;
 
   const parent = canvas.parentElement;
-  if (parent) {
-    parent.classList.add("status-chart-card");
-  }
+  if (parent) parent.classList.add("status-chart-card");
 
-  canvas.style.maxWidth = "450px";
-  canvas.style.maxHeight = "340px";
+  canvas.style.maxWidth = "520px";
+  canvas.style.maxHeight = "350px";
   canvas.style.margin = "0 auto";
   canvas.style.display = "block";
 
@@ -251,6 +248,36 @@ function renderStatusChart(data) {
   const closed = Number(data.closed || 0);
   const total = ready + notReady + closed;
 
+  const centerTextPlugin = {
+    id: "centerTextPlugin",
+    afterDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data || !meta.data[0]) return;
+
+      const ctx = chart.ctx;
+      const x = meta.data[0].x;
+      const y = meta.data[0].y;
+
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "700 13px Segoe UI";
+      ctx.fillText("รวมทั้งสิ้น", x, y - 30);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "900 34px Segoe UI";
+      ctx.fillText(String(total), x, y + 2);
+
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "800 14px Segoe UI";
+      ctx.fillText("โครงการ", x, y + 35);
+
+      ctx.restore();
+    }
+  };
+
   statusChart = new Chart(canvas, {
     type: "doughnut",
     data: {
@@ -259,8 +286,8 @@ function renderStatusChart(data) {
         data: [ready, notReady, closed],
         backgroundColor: ["#22c55e", "#ef4444", "#38bdf8"],
         hoverBackgroundColor: ["#4ade80", "#f87171", "#7dd3fc"],
-        borderColor: "rgba(15, 23, 42, 0.95)",
-        borderWidth: 3,
+        borderColor: "rgba(15, 23, 42, 0.98)",
+        borderWidth: 4,
         hoverOffset: 8,
         spacing: 2
       }]
@@ -268,8 +295,8 @@ function renderStatusChart(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: "70%",
-      radius: "78%",
+      cutout: "68%",
+      radius: "82%",
       animation: {
         animateRotate: true,
         animateScale: true,
@@ -278,10 +305,10 @@ function renderStatusChart(data) {
       },
       layout: {
         padding: {
-          top: 6,
-          bottom: 6,
-          left: 6,
-          right: 6
+          top: 10,
+          bottom: 10,
+          left: 10,
+          right: 10
         }
       },
       plugins: {
@@ -294,17 +321,18 @@ function renderStatusChart(data) {
             pointStyle: "circle",
             padding: 18,
             font: {
-           size: 14,
+              size: 14,
               weight: "bold"
-               },
-               generateLabels: function (chart) {
+            },
+            generateLabels: function (chart) {
               const dataset = chart.data.datasets[0];
+
               return chart.data.labels.map(function (label, i) {
                 const value = Number(dataset.data[i] || 0);
                 const percent = total ? ((value / total) * 100).toFixed(1) : "0.0";
 
                 return {
-                  text: label + "  " + value + " (" + percent + "%)",
+                  text: label + "   " + value + " (" + percent + "%)",
                   fillStyle: dataset.backgroundColor[i],
                   strokeStyle: dataset.backgroundColor[i],
                   lineWidth: 0,
@@ -331,7 +359,8 @@ function renderStatusChart(data) {
           }
         }
       }
-    }
+    },
+    plugins: [centerTextPlugin]
   });
 }
 
@@ -341,13 +370,39 @@ function renderIssueChart(data) {
   if (!canvas || typeof Chart === "undefined") return;
 
   const parent = canvas.parentElement;
-  if (parent) {
-    parent.classList.add("issue-chart-card");
-  }
+  if (parent) parent.classList.add("issue-chart-card");
 
-  canvas.style.maxHeight = "300px";
+  canvas.style.maxHeight = "350px";
 
   if (issueChart) issueChart.destroy();
+
+  const values = [
+    Number(data.docIssue || 0),
+    Number(data.materialIssue || 0),
+    Number(data.costIssue || 0),
+    Number(data.timeIssue || 0)
+  ];
+
+  const barValuePlugin = {
+    id: "barValuePlugin",
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx;
+      const meta = chart.getDatasetMeta(0);
+
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "900 15px Segoe UI";
+
+      meta.data.forEach(function (bar, index) {
+        const value = values[index];
+        ctx.fillText(String(value), bar.x, bar.y - 8);
+      });
+
+      ctx.restore();
+    }
+  };
 
   issueChart = new Chart(canvas, {
     type: "bar",
@@ -355,18 +410,13 @@ function renderIssueChart(data) {
       labels: ["เอกสาร", "พัสดุ", "ค่าใช้จ่าย", "Time"],
       datasets: [{
         label: "จำนวนงาน",
-        data: [
-          Number(data.docIssue || 0),
-          Number(data.materialIssue || 0),
-          Number(data.costIssue || 0),
-          Number(data.timeIssue || 0)
-        ],
-        backgroundColor: ["#ef4444", "#fb923c", "#7c3aed", "#38bdf8"],
-        hoverBackgroundColor: ["#f87171", "#fdba74", "#a78bfa", "#7dd3fc"],
-        borderRadius: 10,
+        data: values,
+        backgroundColor: ["#ef4444", "#fb923c", "#facc15", "#38bdf8"],
+        hoverBackgroundColor: ["#f87171", "#fdba74", "#fde047", "#7dd3fc"],
+        borderRadius: 12,
         borderSkipped: false,
-        barPercentage: 0.58,
-        categoryPercentage: 0.72
+        barPercentage: 0.55,
+        categoryPercentage: 0.68
       }]
     },
     options: {
@@ -385,8 +435,8 @@ function renderIssueChart(data) {
             boxHeight: 10,
             padding: 18,
             font: {
-              size: 13,
-              weight: "700"
+              size: 14,
+              weight: "bold"
             }
           }
         },
@@ -404,8 +454,8 @@ function renderIssueChart(data) {
           ticks: {
             color: "#f8fafc",
             font: {
-              size: 12,
-              weight: "700"
+              size: 13,
+              weight: "bold"
             }
           },
           grid: {
@@ -415,6 +465,7 @@ function renderIssueChart(data) {
         },
         y: {
           beginAtZero: true,
+          suggestedMax: Math.max(...values, 10) + 10,
           ticks: {
             color: "#f8fafc",
             precision: 0
@@ -425,9 +476,11 @@ function renderIssueChart(data) {
           }
         }
       }
-    }
+    },
+    plugins: [barValuePlugin]
   });
 }
+
 
 
 /* =========================
