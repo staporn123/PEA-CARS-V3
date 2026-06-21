@@ -1,13 +1,8 @@
 /* =========================================================
    PEA CARS+ V4 Professional Edition
    File: script.js
-   Purpose: ควบคุมหน้าเว็บ Dashboard / Projects / Work Queue / Alert / AI
+   Copy ทั้งไฟล์นี้ไปวางทับ script.js เดิม
 ========================================================= */
-
-
-/* =========================
-   1) Global State
-========================= */
 
 let allProjects = [];
 let workQueue = [];
@@ -18,20 +13,10 @@ let issueChart = null;
 
 let selectedProject = null;
 
-
-/* =========================
-   2) Initial Load
-========================= */
-
 document.addEventListener("DOMContentLoaded", function () {
   bindEvents();
   loadAllData();
 });
-
-
-/* =========================
-   3) Data Helper
-========================= */
 
 function unwrapArray(response) {
   if (Array.isArray(response)) return response;
@@ -46,11 +31,6 @@ function unwrapObject(response) {
   }
   return response || {};
 }
-
-
-/* =========================
-   4) Event Binding
-========================= */
 
 function bindEvents() {
   document.querySelectorAll(".nav-btn").forEach(function (btn) {
@@ -105,11 +85,6 @@ function bindEvents() {
   }
 }
 
-
-/* =========================
-   5) Page Control
-========================= */
-
 function showPage(page) {
   document.querySelectorAll(".page").forEach(function (p) {
     p.classList.remove("active");
@@ -137,11 +112,6 @@ function showPage(page) {
   if (pageTitle) pageTitle.textContent = titleMap[page] || "Dashboard";
 }
 
-
-/* =========================
-   6) Load Data
-========================= */
-
 async function loadAllData() {
   try {
     setLoading(true);
@@ -163,6 +133,7 @@ async function loadAllData() {
     renderSearchTable(allProjects);
     renderWorkQueue(workQueue);
     renderAlertCenter(alertCenter);
+    renderLastUpdate();
 
   } catch (err) {
     console.error(err);
@@ -171,7 +142,6 @@ async function loadAllData() {
     setLoading(false);
   }
 }
-
 
 function setLoading(isLoading) {
   const btn = document.getElementById("refreshBtn");
@@ -184,10 +154,13 @@ function setLoading(isLoading) {
   if (app) app.classList.toggle("loading", isLoading);
 }
 
+function renderLastUpdate() {
+  const el = document.getElementById("lastUpdate");
+  if (!el) return;
 
-/* =========================
-   7) KPI Render
-========================= */
+  const now = new Date();
+  el.textContent = "อัปเดตล่าสุด: " + now.toLocaleString("th-TH");
+}
 
 function renderKpi(data) {
   const kpiGrid = document.getElementById("kpiGrid");
@@ -219,11 +192,6 @@ function renderKpi(data) {
   }).join("");
 }
 
-
-/* =========================
-   8) Chart Render
-========================= */
-
 function renderCharts(data) {
   renderStatusChart(data);
   renderIssueChart(data);
@@ -235,11 +203,6 @@ function renderStatusChart(data) {
 
   const parent = canvas.parentElement;
   if (parent) parent.classList.add("status-chart-card");
-
-  canvas.style.maxWidth = "520px";
-  canvas.style.maxHeight = "350px";
-  canvas.style.margin = "0 auto";
-  canvas.style.display = "block";
 
   if (statusChart) statusChart.destroy();
 
@@ -263,16 +226,16 @@ function renderStatusChart(data) {
       ctx.textBaseline = "middle";
 
       ctx.fillStyle = "#cbd5e1";
-      ctx.font = "700 13px Segoe UI";
-      ctx.fillText("รวมทั้งสิ้น", x, y - 30);
+      ctx.font = "800 14px Segoe UI";
+      ctx.fillText("รวมทั้งสิ้น", x, y - 34);
 
       ctx.fillStyle = "#ffffff";
-      ctx.font = "900 34px Segoe UI";
+      ctx.font = "950 38px Segoe UI";
       ctx.fillText(String(total), x, y + 2);
 
       ctx.fillStyle = "#cbd5e1";
       ctx.font = "800 14px Segoe UI";
-      ctx.fillText("โครงการ", x, y + 35);
+      ctx.fillText("โครงการ", x, y + 38);
 
       ctx.restore();
     }
@@ -287,9 +250,9 @@ function renderStatusChart(data) {
         backgroundColor: ["#22c55e", "#ef4444", "#38bdf8"],
         hoverBackgroundColor: ["#4ade80", "#f87171", "#7dd3fc"],
         borderColor: "rgba(15, 23, 42, 0.98)",
-        borderWidth: 4,
-        hoverOffset: 8,
-        spacing: 2
+        borderWidth: 5,
+        hoverOffset: 10,
+        spacing: 3
       }]
     },
     options: {
@@ -304,12 +267,7 @@ function renderStatusChart(data) {
         easing: "easeOutQuart"
       },
       layout: {
-        padding: {
-          top: 10,
-          bottom: 10,
-          left: 10,
-          right: 10
-        }
+        padding: 12
       },
       plugins: {
         legend: {
@@ -364,15 +322,12 @@ function renderStatusChart(data) {
   });
 }
 
-
 function renderIssueChart(data) {
   const canvas = document.getElementById("issueChart");
   if (!canvas || typeof Chart === "undefined") return;
 
   const parent = canvas.parentElement;
   if (parent) parent.classList.add("issue-chart-card");
-
-  canvas.style.maxHeight = "350px";
 
   if (issueChart) issueChart.destroy();
 
@@ -413,7 +368,7 @@ function renderIssueChart(data) {
         data: values,
         backgroundColor: ["#ef4444", "#fb923c", "#facc15", "#38bdf8"],
         hoverBackgroundColor: ["#f87171", "#fdba74", "#fde047", "#7dd3fc"],
-        borderRadius: 12,
+        borderRadius: 14,
         borderSkipped: false,
         barPercentage: 0.55,
         categoryPercentage: 0.68
@@ -481,12 +436,6 @@ function renderIssueChart(data) {
   });
 }
 
-
-
-/* =========================
-   9) Project Table
-========================= */
-
 function renderProjectTable(rows) {
   const tbody = document.getElementById("projectTable");
   const count = document.getElementById("projectCount");
@@ -507,7 +456,6 @@ function renderProjectTable(rows) {
   tbody.innerHTML = rows.map(projectRowTemplate).join("");
 }
 
-
 function renderSearchTable(rows) {
   const tbody = document.getElementById("searchTable");
   if (!tbody) return;
@@ -523,7 +471,6 @@ function renderSearchTable(rows) {
 
   tbody.innerHTML = rows.map(projectRowTemplate).join("");
 }
-
 
 function projectRowTemplate(p) {
   const wbs = safeValue(p.wbs);
@@ -543,7 +490,6 @@ function projectRowTemplate(p) {
     </tr>
   `;
 }
-
 
 function searchProjects() {
   const input = document.getElementById("projectSearch");
@@ -571,11 +517,6 @@ function searchProjects() {
 
   renderSearchTable(filtered);
 }
-
-
-/* =========================
-   10) Work Queue / Alert
-========================= */
 
 function renderWorkQueue(rows) {
   const tbody = document.getElementById("workQueueTable");
@@ -605,7 +546,6 @@ function renderWorkQueue(rows) {
   }).join("");
 }
 
-
 function renderAlertCenter(rows) {
   const tbody = document.getElementById("alertTable");
   if (!tbody) return;
@@ -634,18 +574,12 @@ function renderAlertCenter(rows) {
   }).join("");
 }
 
-
-/* =========================
-   11) Project Detail Modal
-========================= */
-
 async function openProjectDetail(wbs) {
   try {
     selectedProject = null;
 
     const rawDetail = await CarsAPI.getProjectDetail(wbs);
     const detail = unwrapObject(rawDetail);
-
     const project = detail.project || detail;
 
     selectedProject = project;
@@ -666,7 +600,6 @@ async function openProjectDetail(wbs) {
     alert("เปิดรายละเอียดไม่สำเร็จ: " + err.message);
   }
 }
-
 
 function renderProjectDetail(project, detail) {
   return `
@@ -699,7 +632,6 @@ function renderProjectDetail(project, detail) {
   `;
 }
 
-
 function renderDetailSections(detail) {
   let html = "";
 
@@ -710,7 +642,6 @@ function renderDetailSections(detail) {
 
   return html;
 }
-
 
 function renderCostDetail(cost) {
   const rows = (cost.items || []).map(function (x) {
@@ -745,7 +676,6 @@ function renderCostDetail(cost) {
     </div>
   `;
 }
-
 
 function renderMaterialDetail(material) {
   const rows = (material.pendingItems || []).map(function (x) {
@@ -789,7 +719,6 @@ function renderMaterialDetail(material) {
     </div>
   `;
 }
-
 
 function renderDocumentDetail(documentDetail) {
   const rows = (documentDetail.items || []).map(function (x) {
@@ -835,7 +764,6 @@ function renderDocumentDetail(documentDetail) {
   `;
 }
 
-
 function renderTimeDetail(time) {
   return `
     <div class="detail-section card">
@@ -850,16 +778,10 @@ function renderTimeDetail(time) {
   `;
 }
 
-
 function closeModal() {
   const modal = document.getElementById("projectModal");
   if (modal) modal.classList.add("hidden");
 }
-
-
-/* =========================
-   12) Export
-========================= */
 
 async function exportExcel() {
   try {
@@ -875,7 +797,6 @@ async function exportExcel() {
   }
 }
 
-
 async function exportProjectPdf(wbs) {
   try {
     const result = await CarsAPI.exportPdf(wbs);
@@ -889,11 +810,6 @@ async function exportProjectPdf(wbs) {
     alert("Export PDF ไม่สำเร็จ: " + err.message);
   }
 }
-
-
-/* =========================
-   13) AI Assistant
-========================= */
 
 function askAssistant() {
   const input = document.getElementById("assistantInput");
@@ -912,7 +828,6 @@ function askAssistant() {
   }, 250);
 }
 
-
 function addChatMessage(type, text) {
   const box = document.getElementById("chatBox");
   if (!box) return;
@@ -924,7 +839,6 @@ function addChatMessage(type, text) {
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
-
 
 function localAssistant(text) {
   const q = text.toLowerCase();
@@ -979,7 +893,6 @@ function localAssistant(text) {
   return "ยังไม่พบข้อมูลจากคำถามนี้";
 }
 
-
 function projectSummaryText(p) {
   return `
 พบงาน ${p.wbs}
@@ -999,7 +912,6 @@ Priority: ${p.priority || "-"}
   `.trim();
 }
 
-
 function ownerSummaryText(list) {
   const owner = list[0].owner || "-";
   const notReady = list.filter(function (p) {
@@ -1018,11 +930,6 @@ ${notReady.slice(0, 8).map(function (p, i) {
   `.trim();
 }
 
-
-/* =========================
-   14) UI Helpers
-========================= */
-
 function priorityBadge(priority) {
   const p = String(priority || "-").toUpperCase();
 
@@ -1036,7 +943,6 @@ function priorityBadge(priority) {
   return `<span class="badge ${cls}">${escapeHtml(p)}</span>`;
 }
 
-
 function statusBadge(systemStatus, userStatus) {
   const sys = String(systemStatus || "-").toUpperCase();
   const usr = String(userStatus || "-").toUpperCase();
@@ -1049,7 +955,6 @@ function statusBadge(systemStatus, userStatus) {
 
   return `<span class="status-pill ${cls}">${escapeHtml(sys)} / ${escapeHtml(usr)}</span>`;
 }
-
 
 function metricBadge(value, status, type, wbs) {
   const s = String(status || "-").toUpperCase();
@@ -1073,7 +978,6 @@ function metricBadge(value, status, type, wbs) {
   `;
 }
 
-
 function detailItem(label, value) {
   return `
     <div class="detail-item">
@@ -1083,16 +987,10 @@ function detailItem(label, value) {
   `;
 }
 
-
-/* =========================
-   15) Format Helpers
-========================= */
-
 function safeValue(value) {
   if (value === null || value === undefined || value === "") return "-";
   return value;
 }
-
 
 function formatPercent(value) {
   if (value === null || value === undefined || value === "") return "-";
@@ -1113,7 +1011,6 @@ function formatPercent(value) {
   return text;
 }
 
-
 function formatMoney(value) {
   const n = Number(String(value || 0).replace(/,/g, ""));
 
@@ -1125,7 +1022,6 @@ function formatMoney(value) {
   });
 }
 
-
 function isPassStatus(value) {
   const s = String(value || "").trim().toUpperCase();
 
@@ -1135,7 +1031,6 @@ function isPassStatus(value) {
     s === "ครบ";
 }
 
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -1144,7 +1039,6 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-
 
 function escapeAttr(value) {
   return escapeHtml(value).replaceAll("`", "");
