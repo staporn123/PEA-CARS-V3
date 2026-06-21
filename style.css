@@ -853,4 +853,92 @@ td.text-wrap {
   td {
     padding: 10px 11px;
   }
+   /* ===== Compact Dashboard Fit Screen ===== */
+
+.main {
+  padding: 22px 28px;
+}
+
+.topbar {
+  margin-bottom: 18px;
+}
+
+.topbar h2 {
+  font-size: 28px;
+}
+
+.kpi-grid {
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.kpi-card {
+  min-height: 118px;
+  padding: 16px 18px;
+  border-radius: 20px;
+}
+
+.kpi-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  font-size: 19px;
+  margin-bottom: 8px;
+}
+
+.kpi-title {
+  font-size: 12px;
+}
+
+.kpi-value {
+  font-size: 30px;
+  margin-top: 6px;
+}
+
+.kpi-sub {
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.card {
+  padding: 18px;
+}
+
+.chart-card {
+  min-height: 320px;
+}
+
+.status-chart-card,
+.issue-chart-card {
+  min-height: 330px;
+}
+
+#statusChart {
+  max-height: 290px !important;
+}
+
+#issueChart {
+  max-height: 290px !important;
+}
+
+.sidebar {
+  width: 235px;
+  min-width: 235px;
+  padding: 20px 14px;
+}
+
+.logo {
+  width: 48px;
+  height: 48px;
+}
+
+.brand h1 {
+  font-size: 20px;
+}
+
+.nav-btn {
+  padding: 12px 14px;
+  border-radius: 15px;
+}
 }
