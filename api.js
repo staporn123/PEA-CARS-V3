@@ -62,6 +62,10 @@ class CarsAPI {
     });
   }
 
+   static getInit() {
+  return this.request("init");
+}
+
   static getDashboard() {
     return this.request("dashboard");
   }
