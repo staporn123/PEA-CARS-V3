@@ -115,16 +115,13 @@ async function loadAllData() {
   try {
     setLoading(true);
 
-    const dashboardRaw = await CarsAPI.getDashboard();
-    const projectsRaw = await CarsAPI.getProjects();
-    const queueRaw = await CarsAPI.getWorkQueue();
-    const alertsRaw = await CarsAPI.getAlertCenter();
+    const initRaw = await CarsAPI.getInit();
+    const init = unwrapObject(initRaw);
 
-    const dashboard = unwrapObject(dashboardRaw);
-
-    allProjects = unwrapArray(projectsRaw);
-    workQueue = unwrapArray(queueRaw);
-    alertCenter = unwrapArray(alertsRaw);
+    const dashboard = init.dashboard || {};
+    allProjects = init.projects || [];
+    workQueue = init.workQueue || [];
+    alertCenter = init.alerts || [];
 
     renderKpi(dashboard);
     renderCharts(dashboard);
@@ -132,7 +129,6 @@ async function loadAllData() {
     renderSearchTable(allProjects);
     renderWorkQueue(workQueue);
     renderAlertCenter(alertCenter);
-    renderLastUpdate();
 
   } catch (err) {
     console.error(err);
