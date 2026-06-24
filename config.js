@@ -8,8 +8,9 @@ const CONFIG = {
   // =========================================
   // Google Apps Script API URL
   // =========================================
-  API_URL:
-  "https://script.google.com/macros/s/AKfycbzc4hoDH75riFqgGjbcjSPWOaoF3v_zam5ySaAhBMp4V-uuz-iClFvV341UDmhxbjVX/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbzc4hoDH75riFqgGjbcjSPWOaoF3v_zam5ySaAhBMp4V-uuz-iClFvV341UDmhxbjVX/exec",
+
+  API_TIMEOUT: 60000,
 
   // =========================================
   // Application Information
@@ -24,8 +25,9 @@ const CONFIG = {
 
   TIMEZONE: "Asia/Bangkok",
 
-  DATE_FORMAT: "dd/MM/yyyy",
+  DATE_FORMAT: "dd/MM/yyyy"
 
+};
   // =========================================
   // Auto Refresh
   // =========================================
