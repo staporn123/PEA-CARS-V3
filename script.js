@@ -2,7 +2,6 @@
    PEA CARS+ V4 Professional Edition
    File: script.js
    Copy ทั้งไฟล์นี้ไปวางทับ script.js เดิม
-   เพิ่ม: Loading Modal + Detail Cache
 ========================================================= */
 
 let allProjects = [];
@@ -12,7 +11,6 @@ let alertCenter = [];
 let statusChart = null;
 let issueChart = null;
 let selectedProject = null;
-
 const detailCache = new Map();
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -121,13 +119,16 @@ async function loadAllData() {
   try {
     setLoading(true);
 
-    const initRaw = await CarsAPI.getInit();
-    const init = unwrapObject(initRaw);
+    const dashboardRaw = await CarsAPI.getDashboard();
+    const projectsRaw = await CarsAPI.getProjects();
+    const queueRaw = await CarsAPI.getWorkQueue();
+    const alertsRaw = await CarsAPI.getAlertCenter();
 
-    const dashboard = init.dashboard || {};
-    allProjects = init.projects || [];
-    workQueue = init.workQueue || [];
-    alertCenter = init.alerts || [];
+    const dashboard = unwrapObject(dashboardRaw);
+
+    allProjects = unwrapArray(projectsRaw);
+    workQueue = unwrapArray(queueRaw);
+    alertCenter = unwrapArray(alertsRaw);
 
     renderKpi(dashboard);
     renderCharts(dashboard);
@@ -323,7 +324,9 @@ function renderStatusChart(data) {
       maintainAspectRatio: false,
       cutout: "58%",
       radius: "92%",
-      layout: { padding: 8 },
+      layout: {
+        padding: 8
+      },
       animation: {
         animateRotate: true,
         animateScale: true,
@@ -331,7 +334,9 @@ function renderStatusChart(data) {
         easing: "easeOutQuart"
       },
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: false
+        },
         tooltip: {
           backgroundColor: "rgba(15, 23, 42, 0.96)",
           titleColor: "#ffffff",
@@ -425,6 +430,14 @@ function renderIssueChart(data) {
               weight: "bold"
             }
           }
+        },
+        tooltip: {
+          backgroundColor: "rgba(15, 23, 42, 0.96)",
+          titleColor: "#ffffff",
+          bodyColor: "#dbeafe",
+          borderColor: "rgba(148, 163, 184, 0.25)",
+          borderWidth: 1,
+          padding: 12
         }
       },
       scales: {
@@ -602,7 +615,7 @@ function renderAlertCenter(rows) {
 }
 
 /* =========================
-   Modal + Loading + Detail Cache
+   Modal
 ========================= */
 
 async function openProjectDetail(wbs) {
@@ -637,8 +650,8 @@ async function openProjectDetail(wbs) {
     const project = detail.project || localProject || detail;
 
     detailCache.set(cacheKey, detail);
-
     selectedProject = project;
+
     title.textContent = "รายละเอียดงาน: " + (project.wbs || wbs);
     body.innerHTML = renderProjectDetail(project, detail);
 
@@ -662,46 +675,6 @@ async function openProjectDetail(wbs) {
 function renderModalLoading(wbs, project) {
   return `
     <div class="modal-loading">
-      <style>
-        .modal-loading {
-          display: grid;
-          place-items: center;
-          min-height: 420px;
-          color: #f8fafc;
-          text-align: center;
-        }
-        .loader-ring {
-          width: 56px;
-          height: 56px;
-          border: 5px solid rgba(148, 163, 184, .22);
-          border-top-color: #38bdf8;
-          border-right-color: #7c3aed;
-          border-radius: 50%;
-          animation: peaSpin .8s linear infinite;
-          margin: 0 auto 18px;
-        }
-        @keyframes peaSpin {
-          to { transform: rotate(360deg); }
-        }
-        .loading-title {
-          font-size: 18px;
-          font-weight: 950;
-        }
-        .loading-sub {
-          margin-top: 8px;
-          color: #94a3b8;
-          font-weight: 700;
-        }
-        .loading-mini-card {
-          margin-top: 18px;
-          padding: 14px 18px;
-          border: 1px solid rgba(96,165,250,.22);
-          border-radius: 16px;
-          background: rgba(2,6,23,.55);
-          max-width: 560px;
-        }
-      </style>
-
       <div>
         <div class="loader-ring"></div>
         <div class="loading-title">กำลังโหลดรายละเอียดงาน</div>
@@ -729,38 +702,28 @@ function normalizeKey(value) {
 
 function renderProjectDetail(project, detail) {
   return `
-    <div class="detail-summary">
-      <div class="detail-hero">
-        <div>
-          <div class="detail-label">WBS</div>
-          <div class="detail-wbs">${escapeHtml(project.wbs)}</div>
-        </div>
-        <div>
-          ${priorityBadge(project.priority)}
-        </div>
-      </div>
-
-      <div class="detail-job-name">${escapeHtml(project.jobName || "-")}</div>
-
-      <div class="detail-grid">
-        ${detailItem("ผู้รับผิดชอบ", project.owner)}
-        ${detailItem("จังหวัด", project.province)}
-        ${detailItem("สถานะระบบ / ผู้ใช้", (project.systemStatus || "-") + " / " + (project.userStatus || "-"))}
-        ${detailItem("Ready", project.readyToClose || project.closureStatus || "-")}
-        ${detailItem("Cost", formatPercent(project.costPercent) + " / " + safeValue(project.costStatus))}
-        ${detailItem("Material", formatPercent(project.materialPercent) + " / " + safeValue(project.materialStatus))}
-        ${detailItem("Document", formatPercent(project.documentPercent) + " / " + safeValue(project.documentStatus))}
-        ${detailItem("Time", formatPercent(project.timePercent) + " / " + safeValue(project.timeStatus))}
-      </div>
+    <div class="detail-grid">
+      ${detailItem("WBS", project.wbs)}
+      ${detailItem("ชื่องาน", project.jobName)}
+      ${detailItem("ผู้รับผิดชอบ", project.owner)}
+      ${detailItem("จังหวัด", project.province)}
+      ${detailItem("สถานะระบบ", project.systemStatus)}
+      ${detailItem("สถานะผู้ใช้", project.userStatus)}
+      ${detailItem("Priority", project.priority)}
+      ${detailItem("Ready", project.readyToClose || project.closureStatus)}
+      ${detailItem("Cost", formatPercent(project.costPercent) + " / " + safeValue(project.costStatus))}
+      ${detailItem("Material", formatPercent(project.materialPercent) + " / " + safeValue(project.materialStatus))}
+      ${detailItem("Document", formatPercent(project.documentPercent) + " / " + safeValue(project.documentStatus))}
+      ${detailItem("Time", formatPercent(project.timePercent) + " / " + safeValue(project.timeStatus))}
     </div>
 
     <div class="detail-section card">
-      <h3>ปัญหาหลัก</h3>
+      <h3>Main Issue</h3>
       <p>${escapeHtml(project.mainIssue || "-")}</p>
     </div>
 
     <div class="detail-section card">
-      <h3>แนวทางดำเนินการ</h3>
+      <h3>Recommended Action</h3>
       <p>${escapeHtml(project.action || "-")}</p>
     </div>
 
@@ -799,14 +762,14 @@ function renderCostDetail(cost) {
         <table>
           <thead>
             <tr>
-              <th>ประเภท</th>
+              <th>ประเภทค่าใช้จ่าย</th>
               <th>แผน</th>
               <th>เบิกจริง</th>
               <th>%</th>
               <th>สถานะ</th>
             </tr>
           </thead>
-          <tbody>${rows || `<tr><td colspan="5" class="empty-state">ไม่พบข้อมูล Cost</td></tr>`}</tbody>
+          <tbody>${rows}</tbody>
         </table>
       </div>
     </div>
@@ -840,14 +803,16 @@ function renderMaterialDetail(material) {
           <thead>
             <tr>
               <th>รหัสพัสดุ</th>
-              <th>รายการ</th>
+              <th>รายการพัสดุ</th>
               <th>ต้องการ</th>
               <th>เบิกแล้ว</th>
               <th>ค้าง</th>
               <th>มูลค่าค้าง</th>
             </tr>
           </thead>
-          <tbody>${rows || `<tr><td colspan="6" class="empty-state">ไม่มีพัสดุค้าง</td></tr>`}</tbody>
+          <tbody>
+            ${rows || `<tr><td colspan="6" class="empty-state">ไม่มีพัสดุค้าง</td></tr>`}
+          </tbody>
         </table>
       </div>
     </div>
@@ -868,10 +833,11 @@ function renderDocumentDetail(documentDetail) {
         <td class="text-wrap">${escapeHtml(x.documentName || x.docName)}</td>
         <td>
           <select
-            class="doc-status-select"
+            class="doc-status-select checklist-control"
             data-row="${escapeAttr(x.row)}"
             data-doc-code="${escapeAttr(x.docCode)}"
             data-index="${index}"
+            disabled
           >
             <option value="ยังไม่ตรวจ" ${currentStatus === "ยังไม่ตรวจ" ? "selected" : ""}>ยังไม่ตรวจ</option>
             <option value="ครบ" ${currentStatus === "ครบ" ? "selected" : ""}>ครบ</option>
@@ -883,11 +849,12 @@ function renderDocumentDetail(documentDetail) {
         <td>${escapeHtml(x.required)}</td>
         <td>
           <input
-            class="doc-remark-input"
+            class="doc-remark-input checklist-control"
             type="text"
             data-row="${escapeAttr(x.row)}"
             placeholder="หมายเหตุ"
             value="${escapeAttr(x.remark || "")}"
+            disabled
           />
         </td>
       </tr>
@@ -924,23 +891,29 @@ function renderDocumentDetail(documentDetail) {
 
       <br>
 
-           <br>
-
       <div class="checklist-actions">
-        <button onclick="setAllChecklistStatus('ครบ')">
+        <button type="button" onclick="setAllChecklistStatus('ครบ')">
           ✅ ติ๊กครบทั้งหมด
         </button>
 
-        <button onclick="setAllChecklistStatus('ยังไม่ตรวจ')">
-          ✏️ แก้ไข / ยังไม่ตรวจ
+        <button type="button" onclick="setAllChecklistStatus('ยังไม่ตรวจ')">
+          ↩️ กลับเป็นยังไม่ตรวจ
         </button>
 
-        <button onclick="saveDocumentChecklistFromModal('${escapeAttr(wbs)}')">
+        <button type="button" onclick="toggleChecklistEdit()">
+          🔍 เปิดตรวจเช็ค / แก้ไข
+        </button>
+
+        <button type="button" onclick="saveDocumentChecklistFromModal('${escapeAttr(wbs)}')">
           💾 บันทึก Checklist
         </button>
 
-        <button onclick="exportProjectPdf('${escapeAttr(wbs)}')">
-          Export PDF Checklist
+        <button type="button" onclick="exportExcel()">
+          📊 Export Excel
+        </button>
+
+        <button type="button" onclick="exportProjectPdf('${escapeAttr(wbs)}')">
+          📄 Export PDF Checklist
         </button>
       </div>
     </div>
@@ -949,6 +922,8 @@ function renderDocumentDetail(documentDetail) {
 
 async function saveDocumentChecklistFromModal(wbs) {
   try {
+    setChecklistControlsEnabled(true);
+
     const selects = document.querySelectorAll(".doc-status-select");
     const remarks = document.querySelectorAll(".doc-remark-input");
 
@@ -997,6 +972,46 @@ async function saveDocumentChecklistFromModal(wbs) {
     console.error(err);
     alert("บันทึก Checklist ไม่สำเร็จ: " + err.message);
   }
+}
+
+function toggleChecklistEdit() {
+  const controls = document.querySelectorAll(".checklist-control");
+
+  if (!controls.length) {
+    alert("ไม่พบรายการ Checklist");
+    return;
+  }
+
+  const willEnable = Array.from(controls).some(function (control) {
+    return control.disabled;
+  });
+
+  setChecklistControlsEnabled(willEnable);
+
+  if (willEnable) {
+    alert("เปิดโหมดตรวจเช็คแล้ว สามารถแก้ไขสถานะและหมายเหตุได้");
+  }
+}
+
+function setChecklistControlsEnabled(enabled) {
+  document.querySelectorAll(".checklist-control").forEach(function (control) {
+    control.disabled = !enabled;
+  });
+}
+
+function setAllChecklistStatus(status) {
+  const selects = document.querySelectorAll(".doc-status-select");
+
+  if (!selects.length) {
+    alert("ไม่พบรายการ Checklist");
+    return;
+  }
+
+  setChecklistControlsEnabled(true);
+
+  selects.forEach(function (select) {
+    select.value = status;
+  });
 }
 
 function renderTimeDetail(time) {
@@ -1293,16 +1308,4 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replaceAll("`", "");
-}
-function setAllChecklistStatus(status) {
-  const selects = document.querySelectorAll(".doc-status-select");
-
-  if (!selects.length) {
-    alert("ไม่พบรายการ Checklist");
-    return;
-  }
-
-  selects.forEach(function (select) {
-    select.value = status;
-  });
 }
