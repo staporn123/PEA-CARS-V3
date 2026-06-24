@@ -124,6 +124,30 @@ function bindEvents() {
     });
   });
 
+  // Dashboard KPI filter: ใช้ Event Delegation แทน inline onclick
+  // เพื่อให้ทำงานได้แน่นอนแม้ GitHub Pages โหลด script แบบ defer/module
+  const kpiGrid = document.getElementById("kpiGrid");
+  if (kpiGrid) {
+    kpiGrid.addEventListener("click", function (e) {
+      const card = e.target.closest(".kpi-card");
+      if (!card || !kpiGrid.contains(card)) return;
+
+      const filter = card.getAttribute("data-filter") || "all";
+      applyDashboardFilter(filter);
+    });
+
+    kpiGrid.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") return;
+
+      const card = e.target.closest(".kpi-card");
+      if (!card || !kpiGrid.contains(card)) return;
+
+      e.preventDefault();
+      const filter = card.getAttribute("data-filter") || "all";
+      applyDashboardFilter(filter);
+    });
+  }
+
   const refreshBtn = document.getElementById("refreshBtn");
   if (refreshBtn) refreshBtn.addEventListener("click", function () {
     detailCache.clear();
@@ -302,7 +326,7 @@ function renderKpi(data) {
     return `
       <div
         class="kpi-card kpi-${escapeAttr(item.tone)}${activeClass}"
-        onclick="applyDashboardFilter('${escapeAttr(item.key)}')"
+        data-filter="${escapeAttr(item.key)}"
         title="คลิกเพื่อกรองรายการด้านล่าง"
         role="button"
         tabindex="0"
@@ -421,7 +445,7 @@ function refreshKpiActiveState() {
     card.classList.remove("active-filter");
   });
 
-  const activeCard = document.querySelector('.kpi-card[onclick*="' + activeDashboardFilter + '"]');
+  const activeCard = document.querySelector('.kpi-card[data-filter="' + activeDashboardFilter + '"]');
   if (activeCard) activeCard.classList.add("active-filter");
 }
 
@@ -434,6 +458,10 @@ function scrollToProjectOverview() {
       card.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 80);
   }
+}
+
+if (typeof window !== "undefined") {
+  window.applyDashboardFilter = applyDashboardFilter;
 }
 
 /* =========================
