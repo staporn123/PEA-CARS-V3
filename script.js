@@ -924,21 +924,28 @@ function renderDocumentDetail(documentDetail) {
 
       <br>
 
-      <button onclick="setAllChecklistStatus('ครบ')">
-  ✅ ติ๊กครบทั้งหมด
-</button>
+           <br>
 
-<button onclick="setAllChecklistStatus('ยังไม่ตรวจ')">
-  ✏️ แก้ไข / ยังไม่ตรวจ
-</button>
+      <div class="checklist-actions">
+        <button onclick="setAllChecklistStatus('ครบ')">
+          ✅ ติ๊กครบทั้งหมด
+        </button>
 
-<button onclick="saveDocumentChecklistFromModal('${escapeAttr(wbs)}')">
-  💾 บันทึก Checklist
-</button>
+        <button onclick="setAllChecklistStatus('ยังไม่ตรวจ')">
+          ✏️ แก้ไข / ยังไม่ตรวจ
+        </button>
 
-<button onclick="exportProjectPdf('${escapeAttr(wbs)}')">
-  Export PDF Checklist
-</button>
+        <button onclick="saveDocumentChecklistFromModal('${escapeAttr(wbs)}')">
+          💾 บันทึก Checklist
+        </button>
+
+        <button onclick="exportProjectPdf('${escapeAttr(wbs)}')">
+          Export PDF Checklist
+        </button>
+      </div>
+    </div>
+  `;
+}
 
 async function saveDocumentChecklistFromModal(wbs) {
   try {
