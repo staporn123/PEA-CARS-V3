@@ -924,16 +924,21 @@ function renderDocumentDetail(documentDetail) {
 
       <br>
 
-      <button onclick="saveDocumentChecklistFromModal('${escapeAttr(wbs)}')">
-        💾 บันทึก Checklist
-      </button>
+      <button onclick="setAllChecklistStatus('ครบ')">
+  ✅ ติ๊กครบทั้งหมด
+</button>
 
-      <button onclick="exportProjectPdf('${escapeAttr(wbs)}')">
-        Export PDF Checklist
-      </button>
-    </div>
-  `;
-}
+<button onclick="setAllChecklistStatus('ยังไม่ตรวจ')">
+  ✏️ แก้ไข / ยังไม่ตรวจ
+</button>
+
+<button onclick="saveDocumentChecklistFromModal('${escapeAttr(wbs)}')">
+  💾 บันทึก Checklist
+</button>
+
+<button onclick="exportProjectPdf('${escapeAttr(wbs)}')">
+  Export PDF Checklist
+</button>
 
 async function saveDocumentChecklistFromModal(wbs) {
   try {
@@ -1281,4 +1286,16 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replaceAll("`", "");
+}
+function setAllChecklistStatus(status) {
+  const selects = document.querySelectorAll(".doc-status-select");
+
+  if (!selects.length) {
+    alert("ไม่พบรายการ Checklist");
+    return;
+  }
+
+  selects.forEach(function (select) {
+    select.value = status;
+  });
 }
