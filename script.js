@@ -11,12 +11,31 @@ let alertCenter = [];
 let statusChart = null;
 let issueChart = null;
 let selectedProject = null;
+let activeDashboardFilter = "all";
 const detailCache = new Map();
 
 document.addEventListener("DOMContentLoaded", function () {
+  injectDashboardFilterStyle();
   bindEvents();
   loadAllData();
 });
+
+
+function injectDashboardFilterStyle() {
+  if (document.getElementById("dashboardFilterStyle")) return;
+
+  const style = document.createElement("style");
+  style.id = "dashboardFilterStyle";
+  style.textContent = `
+    .kpi-card { cursor: pointer; }
+    .kpi-card.active-filter {
+      border-color: rgba(56, 189, 248, 0.9) !important;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18), 0 18px 45px rgba(37, 99, 235, 0.34) !important;
+      transform: translateY(-2px);
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 function unwrapArray(response) {
   if (Array.isArray(response)) return response;
@@ -197,6 +216,7 @@ async function loadAllData() {
 
     renderKpi(dashboard);
     renderCharts(dashboard);
+    activeDashboardFilter = "all";
     renderProjectTable(allProjects);
     renderSearchTable(allProjects);
     renderWorkQueue(workQueue);
@@ -263,22 +283,30 @@ function renderKpi(data) {
   if (!kpiGrid) return;
 
   const items = [
-    { title: "งานทั้งหมด", value: data.total || 0, sub: "โครงการทั้งหมด", icon: "📁", tone: "blue" },
-    { title: "พร้อมปิดงาน", value: data.ready || 0, sub: "Ready to Close", icon: "✅", tone: "green" },
-    { title: "ยังไม่พร้อม", value: data.notReady || 0, sub: "Need Action", icon: "⏱️", tone: "orange" },
-    { title: "ปิดแล้ว", value: data.closed || 0, sub: "Closed", icon: "🔒", tone: "purple" },
-    { title: "ติดเอกสาร", value: data.docIssue || 0, sub: "Document Issue", icon: "📄", tone: "red" },
-    { title: "ติดพัสดุ", value: data.materialIssue || 0, sub: "Material Issue", icon: "📦", tone: "orange" },
-    { title: "ติดค่าใช้จ่าย", value: data.costIssue || 0, sub: "Cost Issue", icon: "💰", tone: "yellow" },
-    { title: "ติด Time", value: data.timeIssue || 0, sub: "Time Issue", icon: "🕘", tone: "blue" },
-    { title: "REL", value: data.rel || 0, sub: "Released", icon: "📋", tone: "purple" },
-    { title: "TECO", value: data.teco || 0, sub: "Technically Complete", icon: "☑️", tone: "cyan" },
-    { title: "CLSD", value: data.clsd || 0, sub: "Closed Status", icon: "🔐", tone: "green" }
+    { key: "all", title: "งานทั้งหมด", value: data.total || 0, sub: "โครงการทั้งหมด", icon: "📁", tone: "blue" },
+    { key: "ready", title: "พร้อมปิดงาน", value: data.ready || 0, sub: "Ready to Close", icon: "✅", tone: "green" },
+    { key: "notReady", title: "ยังไม่พร้อม", value: data.notReady || 0, sub: "Need Action", icon: "⏱️", tone: "orange" },
+    { key: "closed", title: "ปิดแล้ว", value: data.closed || 0, sub: "Closed", icon: "🔒", tone: "purple" },
+    { key: "docIssue", title: "ติดเอกสาร", value: data.docIssue || 0, sub: "Document Issue", icon: "📄", tone: "red" },
+    { key: "materialIssue", title: "ติดพัสดุ", value: data.materialIssue || 0, sub: "Material Issue", icon: "📦", tone: "orange" },
+    { key: "costIssue", title: "ติดค่าใช้จ่าย", value: data.costIssue || 0, sub: "Cost Issue", icon: "💰", tone: "yellow" },
+    { key: "timeIssue", title: "ติด Time", value: data.timeIssue || 0, sub: "Time Issue", icon: "🕘", tone: "blue" },
+    { key: "rel", title: "REL", value: data.rel || 0, sub: "Released", icon: "📋", tone: "purple" },
+    { key: "teco", title: "TECO", value: data.teco || 0, sub: "Technically Complete", icon: "☑️", tone: "cyan" },
+    { key: "clsd", title: "CLSD", value: data.clsd || 0, sub: "Closed Status", icon: "🔐", tone: "green" }
   ];
 
   kpiGrid.innerHTML = items.map(function (item) {
+    const activeClass = item.key === activeDashboardFilter ? " active-filter" : "";
+
     return `
-      <div class="kpi-card kpi-${escapeAttr(item.tone)}">
+      <div
+        class="kpi-card kpi-${escapeAttr(item.tone)}${activeClass}"
+        onclick="applyDashboardFilter('${escapeAttr(item.key)}')"
+        title="คลิกเพื่อกรองรายการด้านล่าง"
+        role="button"
+        tabindex="0"
+      >
         <div class="kpi-icon">${escapeHtml(item.icon)}</div>
         <div class="kpi-title">${escapeHtml(item.title)}</div>
         <div class="kpi-value">${escapeHtml(item.value)}</div>
@@ -286,6 +314,126 @@ function renderKpi(data) {
       </div>
     `;
   }).join("");
+}
+
+function applyDashboardFilter(type) {
+  activeDashboardFilter = type || "all";
+
+  let filtered = allProjects.slice();
+  let filterTitle = "งานทั้งหมด";
+
+  switch (activeDashboardFilter) {
+    case "ready":
+      filterTitle = "พร้อมปิดงาน";
+      filtered = allProjects.filter(function (p) {
+        return String(p.readyToClose || "").toUpperCase() === "YES" ||
+          p.closureStatus === "พร้อมปิดงาน";
+      });
+      break;
+
+    case "notReady":
+      filterTitle = "ยังไม่พร้อม";
+      filtered = allProjects.filter(function (p) {
+        return String(p.readyToClose || "").toUpperCase() !== "YES" &&
+          p.closureStatus !== "พร้อมปิดงาน" &&
+          p.closureStatus !== "ปิดแล้ว";
+      });
+      break;
+
+    case "closed":
+      filterTitle = "ปิดแล้ว";
+      filtered = allProjects.filter(function (p) {
+        return p.closureStatus === "ปิดแล้ว" || String(p.systemStatus || "").toUpperCase() === "CLSD";
+      });
+      break;
+
+    case "docIssue":
+      filterTitle = "ติดเอกสาร";
+      filtered = allProjects.filter(function (p) {
+        return !isPassStatus(p.documentStatus);
+      });
+      break;
+
+    case "materialIssue":
+      filterTitle = "ติดพัสดุ";
+      filtered = allProjects.filter(function (p) {
+        return !isPassStatus(p.materialStatus);
+      });
+      break;
+
+    case "costIssue":
+      filterTitle = "ติดค่าใช้จ่าย";
+      filtered = allProjects.filter(function (p) {
+        return !isPassStatus(p.costStatus);
+      });
+      break;
+
+    case "timeIssue":
+      filterTitle = "ติด Time";
+      filtered = allProjects.filter(function (p) {
+        return p.timeStatus && !isPassStatus(p.timeStatus);
+      });
+      break;
+
+    case "rel":
+      filterTitle = "REL";
+      filtered = allProjects.filter(function (p) {
+        return String(p.systemStatus || "").toUpperCase() === "REL";
+      });
+      break;
+
+    case "teco":
+      filterTitle = "TECO";
+      filtered = allProjects.filter(function (p) {
+        return String(p.systemStatus || "").toUpperCase() === "TECO";
+      });
+      break;
+
+    case "clsd":
+      filterTitle = "CLSD";
+      filtered = allProjects.filter(function (p) {
+        return String(p.systemStatus || "").toUpperCase() === "CLSD";
+      });
+      break;
+
+    default:
+      activeDashboardFilter = "all";
+      filterTitle = "งานทั้งหมด";
+      filtered = allProjects.slice();
+  }
+
+  renderProjectTable(filtered);
+  renderSearchTable(filtered);
+  updateDashboardFilterLabel(filterTitle, filtered.length);
+  refreshKpiActiveState();
+  scrollToProjectOverview();
+}
+
+function updateDashboardFilterLabel(title, count) {
+  const projectCount = document.getElementById("projectCount");
+  if (projectCount) {
+    projectCount.textContent = title + " " + count + " งาน";
+  }
+}
+
+function refreshKpiActiveState() {
+  document.querySelectorAll(".kpi-card").forEach(function (card) {
+    card.classList.remove("active-filter");
+  });
+
+  const activeCard = document.querySelector('.kpi-card[onclick*="' + activeDashboardFilter + '"]');
+  if (activeCard) activeCard.classList.add("active-filter");
+}
+
+function scrollToProjectOverview() {
+  const table = document.getElementById("projectTable");
+  const card = table ? table.closest(".card") || table.closest("section") || table : null;
+
+  if (card && typeof card.scrollIntoView === "function") {
+    setTimeout(function () {
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }
 }
 
 /* =========================
