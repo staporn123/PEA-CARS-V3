@@ -2,6 +2,7 @@
    PEA CARS+ V4 Professional Edition
    File: script.js
    Copy ทั้งไฟล์นี้ไปวางทับ script.js เดิม
+   เพิ่ม: Loading Modal + Detail Cache
 ========================================================= */
 
 let allProjects = [];
@@ -11,6 +12,8 @@ let alertCenter = [];
 let statusChart = null;
 let issueChart = null;
 let selectedProject = null;
+
+const detailCache = new Map();
 
 document.addEventListener("DOMContentLoaded", function () {
   bindEvents();
@@ -39,7 +42,10 @@ function bindEvents() {
   });
 
   const refreshBtn = document.getElementById("refreshBtn");
-  if (refreshBtn) refreshBtn.addEventListener("click", loadAllData);
+  if (refreshBtn) refreshBtn.addEventListener("click", function () {
+    detailCache.clear();
+    loadAllData();
+  });
 
   const projectSearchBtn = document.getElementById("projectSearchBtn");
   if (projectSearchBtn) projectSearchBtn.addEventListener("click", searchProjects);
@@ -129,6 +135,7 @@ async function loadAllData() {
     renderSearchTable(allProjects);
     renderWorkQueue(workQueue);
     renderAlertCenter(alertCenter);
+    renderLastUpdate();
 
   } catch (err) {
     console.error(err);
@@ -316,9 +323,7 @@ function renderStatusChart(data) {
       maintainAspectRatio: false,
       cutout: "58%",
       radius: "92%",
-      layout: {
-        padding: 8
-      },
+      layout: { padding: 8 },
       animation: {
         animateRotate: true,
         animateScale: true,
@@ -326,9 +331,7 @@ function renderStatusChart(data) {
         easing: "easeOutQuart"
       },
       plugins: {
-        legend: {
-          display: false
-        },
+        legend: { display: false },
         tooltip: {
           backgroundColor: "rgba(15, 23, 42, 0.96)",
           titleColor: "#ffffff",
@@ -422,14 +425,6 @@ function renderIssueChart(data) {
               weight: "bold"
             }
           }
-        },
-        tooltip: {
-          backgroundColor: "rgba(15, 23, 42, 0.96)",
-          titleColor: "#ffffff",
-          bodyColor: "#dbeafe",
-          borderColor: "rgba(148, 163, 184, 0.25)",
-          borderWidth: 1,
-          padding: 12
         }
       },
       scales: {
@@ -607,40 +602,129 @@ function renderAlertCenter(rows) {
 }
 
 /* =========================
-   Modal
+   Modal + Loading + Detail Cache
 ========================= */
 
 async function openProjectDetail(wbs) {
+  const modal = document.getElementById("projectModal");
+  const title = document.getElementById("modalTitle");
+  const body = document.getElementById("modalBody");
+
+  if (!modal || !title || !body) return;
+
+  const cacheKey = normalizeKey(wbs);
+  const localProject = getProjectFromLocal(wbs);
+
   try {
     selectedProject = null;
 
+    modal.classList.remove("hidden");
+    title.textContent = "กำลังโหลดรายละเอียดงาน: " + wbs;
+    body.innerHTML = renderModalLoading(wbs, localProject);
+
+    if (detailCache.has(cacheKey)) {
+      const cachedDetail = detailCache.get(cacheKey);
+      const cachedProject = cachedDetail.project || localProject || cachedDetail;
+
+      selectedProject = cachedProject;
+      title.textContent = "รายละเอียดงาน: " + (cachedProject.wbs || wbs) + " (จากแคช)";
+      body.innerHTML = renderProjectDetail(cachedProject, cachedDetail);
+      return;
+    }
+
     const rawDetail = await CarsAPI.getProjectDetail(wbs);
     const detail = unwrapObject(rawDetail);
+    const project = detail.project || localProject || detail;
 
-    const project = detail.project || getProjectFromLocal(wbs) || detail;
+    detailCache.set(cacheKey, detail);
 
     selectedProject = project;
-
-    const modal = document.getElementById("projectModal");
-    const title = document.getElementById("modalTitle");
-    const body = document.getElementById("modalBody");
-
-    if (!modal || !title || !body) return;
-
     title.textContent = "รายละเอียดงาน: " + (project.wbs || wbs);
     body.innerHTML = renderProjectDetail(project, detail);
 
-    modal.classList.remove("hidden");
-
   } catch (err) {
     console.error(err);
-    alert("เปิดรายละเอียดไม่สำเร็จ: " + err.message);
+
+    title.textContent = "เกิดข้อผิดพลาด";
+    body.innerHTML = `
+      <div class="modal-loading">
+        <div>
+          <div class="loading-title">โหลดรายละเอียดไม่สำเร็จ</div>
+          <div class="loading-sub">${escapeHtml(err.message)}</div>
+          <br>
+          <button onclick="openProjectDetail('${escapeAttr(wbs)}')">ลองโหลดใหม่</button>
+        </div>
+      </div>
+    `;
   }
 }
 
+function renderModalLoading(wbs, project) {
+  return `
+    <div class="modal-loading">
+      <style>
+        .modal-loading {
+          display: grid;
+          place-items: center;
+          min-height: 420px;
+          color: #f8fafc;
+          text-align: center;
+        }
+        .loader-ring {
+          width: 56px;
+          height: 56px;
+          border: 5px solid rgba(148, 163, 184, .22);
+          border-top-color: #38bdf8;
+          border-right-color: #7c3aed;
+          border-radius: 50%;
+          animation: peaSpin .8s linear infinite;
+          margin: 0 auto 18px;
+        }
+        @keyframes peaSpin {
+          to { transform: rotate(360deg); }
+        }
+        .loading-title {
+          font-size: 18px;
+          font-weight: 950;
+        }
+        .loading-sub {
+          margin-top: 8px;
+          color: #94a3b8;
+          font-weight: 700;
+        }
+        .loading-mini-card {
+          margin-top: 18px;
+          padding: 14px 18px;
+          border: 1px solid rgba(96,165,250,.22);
+          border-radius: 16px;
+          background: rgba(2,6,23,.55);
+          max-width: 560px;
+        }
+      </style>
+
+      <div>
+        <div class="loader-ring"></div>
+        <div class="loading-title">กำลังโหลดรายละเอียดงาน</div>
+        <div class="loading-sub">กำลังดึงข้อมูล Cost / Material / Document / Time</div>
+
+        <div class="loading-mini-card">
+          <strong>${escapeHtml(wbs)}</strong><br>
+          ${escapeHtml(project ? project.jobName : "กรุณารอสักครู่...")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function getProjectFromLocal(wbs) {
-  const key = String(wbs || "").trim().toUpperCase();
-  return allProjects.find(p => String(p.wbs || "").trim().toUpperCase() === key) || null;
+  const key = normalizeKey(wbs);
+  return allProjects.find(function (p) {
+    return normalizeKey(p.wbs) === key;
+  }) || null;
+}
+
+function normalizeKey(value) {
+  return String(value || "").trim().toUpperCase();
 }
 
 function renderProjectDetail(project, detail) {
@@ -890,6 +974,8 @@ async function saveDocumentChecklistFromModal(wbs) {
       return;
     }
 
+    detailCache.delete(normalizeKey(wbs));
+
     alert("บันทึก Checklist สำเร็จ");
 
     closeModal();
@@ -915,17 +1001,11 @@ function renderTimeDetail(time) {
   `;
 }
 
-function documentStatusBadge(status) {
-  const s = String(status || "-");
-  const ok = isPassStatus(s) || s === "ไม่เกี่ยวข้อง";
-  const cls = ok ? "metric-pass" : "metric-fail";
-  return `<span class="metric-pill ${cls}">${escapeHtml(s)}</span>`;
-}
-
 function closeModal() {
   const modal = document.getElementById("projectModal");
   if (modal) modal.classList.add("hidden");
 }
+
 /* =========================
    Export
 ========================= */
