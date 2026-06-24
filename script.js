@@ -32,72 +32,6 @@ function unwrapObject(response) {
   return response || {};
 }
 
-function getApiUrl() {
-  if (typeof CONFIG !== "undefined" && CONFIG.API_URL) return CONFIG.API_URL;
-  if (typeof window !== "undefined" && window.CONFIG && window.CONFIG.API_URL) return window.CONFIG.API_URL;
-  throw new Error("ไม่พบ CONFIG.API_URL ใน config.js");
-}
-
-function apiAction(action, params) {
-  params = params || {};
-
-  return new Promise(function (resolve, reject) {
-    const callbackName = "peaCarsCb_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-    const timeoutMs = (typeof CONFIG !== "undefined" && CONFIG.API_TIMEOUT) ? CONFIG.API_TIMEOUT : 60000;
-
-    const query = Object.keys(params).map(function (key) {
-      return encodeURIComponent(key) + "=" + encodeURIComponent(params[key]);
-    }).join("&");
-
-    const url =
-      getApiUrl() +
-      "?action=" + encodeURIComponent(action) +
-      (query ? "&" + query : "") +
-      "&callback=" + encodeURIComponent(callbackName) +
-      "&_ts=" + Date.now();
-
-    const script = document.createElement("script");
-    let done = false;
-
-    const timer = setTimeout(function () {
-      if (done) return;
-      done = true;
-      cleanup();
-      reject(new Error("API timeout: " + action));
-    }, timeoutMs);
-
-    function cleanup() {
-      clearTimeout(timer);
-      try { delete window[callbackName]; } catch (e) { window[callbackName] = undefined; }
-      if (script && script.parentNode) script.parentNode.removeChild(script);
-    }
-
-    window[callbackName] = function (data) {
-      if (done) return;
-      done = true;
-      cleanup();
-
-      if (data && data.success === false) {
-        reject(new Error(data.message || ("API error: " + action)));
-        return;
-      }
-
-      resolve(data);
-    };
-
-    script.onerror = function () {
-      if (done) return;
-      done = true;
-      cleanup();
-      reject(new Error("โหลด API ไม่สำเร็จ: " + action));
-    };
-
-    script.src = url;
-    document.head.appendChild(script);
-  });
-}
-
-
 function bindEvents() {
   document.querySelectorAll(".nav-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -184,16 +118,17 @@ function showPage(page) {
 async function loadAllData() {
   try {
     setLoading(true);
-    detailCache.clear();
 
-    // TURBO V6: โหลดหน้าแรกด้วย action=init เพียงครั้งเดียว
-    // init จะส่งเฉพาะ Dashboard + ACTIVE_PROJECT ไม่โหลด detail หนัก ๆ
-    const init = unwrapObject(await apiAction("init"));
+    const dashboardRaw = await CarsAPI.getDashboard();
+    const projectsRaw = await CarsAPI.getProjects();
+    const queueRaw = await CarsAPI.getWorkQueue();
+    const alertsRaw = await CarsAPI.getAlertCenter();
 
-    const dashboard = init.dashboard || {};
-    allProjects = init.projects || [];
-    workQueue = init.workQueue || [];
-    alertCenter = init.alerts || [];
+    const dashboard = unwrapObject(dashboardRaw);
+
+    allProjects = unwrapArray(projectsRaw);
+    workQueue = unwrapArray(queueRaw);
+    alertCenter = unwrapArray(alertsRaw);
 
     renderKpi(dashboard);
     renderCharts(dashboard);
@@ -203,35 +138,11 @@ async function loadAllData() {
     renderAlertCenter(alertCenter);
     renderLastUpdate();
 
-    // โหลด Work Queue / Alert ตามหลังแบบ background ไม่บล็อก Dashboard
-    loadLazyDashboardLists();
-
   } catch (err) {
     console.error(err);
     alert("โหลดข้อมูลไม่สำเร็จ: " + err.message);
   } finally {
     setLoading(false);
-  }
-}
-
-async function loadLazyDashboardLists() {
-  try {
-    const results = await Promise.allSettled([
-      apiAction("workqueue"),
-      apiAction("alerts")
-    ]);
-
-    if (results[0].status === "fulfilled") {
-      workQueue = unwrapArray(results[0].value);
-      renderWorkQueue(workQueue);
-    }
-
-    if (results[1].status === "fulfilled") {
-      alertCenter = unwrapArray(results[1].value);
-      renderAlertCenter(alertCenter);
-    }
-  } catch (err) {
-    console.warn("Lazy list load skipped:", err);
   }
 }
 
@@ -715,63 +626,39 @@ async function openProjectDetail(wbs) {
   if (!modal || !title || !body) return;
 
   const cacheKey = normalizeKey(wbs);
-  const localProject = getProjectFromLocal(wbs) || { wbs: wbs };
-
-  selectedProject = localProject;
-
-  // TURBO V6: เปิด Modal ทันทีจากข้อมูล ACTIVE_PROJECT ไม่รอ API detail
-  modal.classList.remove("hidden");
-  title.textContent = "รายละเอียดงาน: " + (localProject.wbs || wbs);
-  body.innerHTML = renderProjectDetailShell(localProject);
-
-  if (detailCache.has(cacheKey)) {
-    const cachedDetail = detailCache.get(cacheKey);
-    const cachedProject = cachedDetail.project || localProject;
-    selectedProject = cachedProject;
-    body.innerHTML = renderProjectDetail(cachedProject, cachedDetail);
-    return;
-  }
+  const localProject = getProjectFromLocal(wbs);
 
   try {
-    setDetailPartLoading("cost");
-    setDetailPartLoading("material");
-    setDetailPartLoading("document");
-    setDetailPartLoading("time");
+    selectedProject = null;
 
-    const results = await Promise.allSettled([
-      apiAction("costdetail", { wbs: wbs }),
-      apiAction("materialdetail", { wbs: wbs }),
-      apiAction("documentdetail", { wbs: wbs }),
-      apiAction("timedetail", { wbs: wbs })
-    ]);
+    modal.classList.remove("hidden");
+    title.textContent = "กำลังโหลดรายละเอียดงาน: " + wbs;
+    body.innerHTML = renderModalLoading(wbs, localProject);
 
-    const detail = {
-      success: true,
-      project: localProject,
-      cost: results[0].status === "fulfilled" ? unwrapObject(results[0].value) : null,
-      material: results[1].status === "fulfilled" ? unwrapObject(results[1].value) : null,
-      document: results[2].status === "fulfilled" ? unwrapObject(results[2].value) : null,
-      time: results[3].status === "fulfilled" ? unwrapObject(results[3].value) : null,
-      errors: results.map(function (r, i) {
-        if (r.status === "fulfilled") return null;
-        return ["cost", "material", "document", "time"][i] + ": " + r.reason.message;
-      }).filter(Boolean),
-      cacheMode: "frontend-lazy-v6",
-      updatedAt: new Date()
-    };
+    if (detailCache.has(cacheKey)) {
+      const cachedDetail = detailCache.get(cacheKey);
+      const cachedProject = cachedDetail.project || localProject || cachedDetail;
+
+      selectedProject = cachedProject;
+      title.textContent = "รายละเอียดงาน: " + (cachedProject.wbs || wbs) + " (จากแคช)";
+      body.innerHTML = renderProjectDetail(cachedProject, cachedDetail);
+      return;
+    }
+
+    const rawDetail = await CarsAPI.getProjectDetail(wbs);
+    const detail = unwrapObject(rawDetail);
+    const project = detail.project || localProject || detail;
 
     detailCache.set(cacheKey, detail);
+    selectedProject = project;
 
-    title.textContent = "รายละเอียดงาน: " + (localProject.wbs || wbs);
-    body.innerHTML = renderProjectDetail(localProject, detail);
-
-    if (detail.errors && detail.errors.length) {
-      console.warn("Detail partial errors:", detail.errors);
-    }
+    title.textContent = "รายละเอียดงาน: " + (project.wbs || wbs);
+    body.innerHTML = renderProjectDetail(project, detail);
 
   } catch (err) {
     console.error(err);
 
+    title.textContent = "เกิดข้อผิดพลาด";
     body.innerHTML = `
       <div class="modal-loading">
         <div>
@@ -811,60 +698,6 @@ function getProjectFromLocal(wbs) {
 
 function normalizeKey(value) {
   return String(value || "").trim().toUpperCase();
-}
-
-function renderProjectDetailShell(project) {
-  return `
-    <div class="detail-grid">
-      ${detailItem("WBS", project.wbs)}
-      ${detailItem("ชื่องาน", project.jobName)}
-      ${detailItem("ผู้รับผิดชอบ", project.owner)}
-      ${detailItem("จังหวัด", project.province)}
-      ${detailItem("สถานะระบบ", project.systemStatus)}
-      ${detailItem("สถานะผู้ใช้", project.userStatus)}
-      ${detailItem("Priority", project.priority)}
-      ${detailItem("Ready", project.readyToClose || project.closureStatus)}
-      ${detailItem("Cost", formatPercent(project.costPercent) + " / " + safeValue(project.costStatus))}
-      ${detailItem("Material", formatPercent(project.materialPercent) + " / " + safeValue(project.materialStatus))}
-      ${detailItem("Document", formatPercent(project.documentPercent) + " / " + safeValue(project.documentStatus))}
-      ${detailItem("Time", formatPercent(project.timePercent) + " / " + safeValue(project.timeStatus))}
-    </div>
-
-    <div class="detail-section card">
-      <h3>Main Issue</h3>
-      <p>${escapeHtml(project.mainIssue || "-")}</p>
-    </div>
-
-    <div class="detail-section card">
-      <h3>Recommended Action</h3>
-      <p>${escapeHtml(project.action || "-")}</p>
-    </div>
-
-    ${renderLazyDetailPlaceholder("cost", "Cost Detail")}
-    ${renderLazyDetailPlaceholder("material", "Material Pending")}
-    ${renderLazyDetailPlaceholder("document", "Document Checklist")}
-    ${renderLazyDetailPlaceholder("time", "Time Detail")}
-  `;
-}
-
-function renderLazyDetailPlaceholder(part, title) {
-  return `
-    <div class="detail-section card" id="detail-part-${escapeAttr(part)}">
-      <h3>${escapeHtml(title)}</h3>
-      <div class="modal-loading mini">
-        <div>
-          <div class="loader-ring small"></div>
-          <div class="loading-title">กำลังโหลด ${escapeHtml(title)}</div>
-          <div class="loading-sub">ระบบกำลังดึงข้อมูลเฉพาะส่วนนี้...</div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function setDetailPartLoading(part) {
-  const el = document.getElementById("detail-part-" + part);
-  if (!el) return;
 }
 
 function renderProjectDetail(project, detail) {
@@ -1121,7 +954,7 @@ async function saveDocumentChecklistFromModal(wbs) {
     const ok = confirm("ยืนยันบันทึก Checklist จำนวน " + items.length + " รายการ?");
     if (!ok) return;
 
-    const result = await apiAction("savechecklist", { items: JSON.stringify(items) });
+    const result = await CarsAPI.saveChecklist(items);
 
     if (result && result.success === false) {
       alert("บันทึกไม่สำเร็จ: " + (result.message || ""));
@@ -1206,7 +1039,7 @@ function closeModal() {
 
 async function exportExcel() {
   try {
-    const result = await apiAction("exportexcel");
+    const result = await CarsAPI.exportExcel();
 
     if (result && result.url) {
       window.open(result.url, "_blank");
@@ -1220,7 +1053,7 @@ async function exportExcel() {
 
 async function exportProjectPdf(wbs) {
   try {
-    const result = await apiAction("exportpdf", { wbs: wbs });
+    const result = await CarsAPI.exportPdf(wbs);
 
     if (result && result.url) {
       window.open(result.url, "_blank");
