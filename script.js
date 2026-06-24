@@ -1,5 +1,5 @@
 /* =========================================================
-   PEA CARS+ V4 Professional Edition
+   PEA CARS+ V4 Professional Edition - Turbo V6.1 Full Detail
    File: script.js
    Copy ทั้งไฟล์นี้ไปวางทับ script.js เดิม
 ========================================================= */
@@ -31,6 +31,72 @@ function unwrapObject(response) {
   }
   return response || {};
 }
+
+function getApiUrl() {
+  if (typeof CONFIG !== "undefined" && CONFIG.API_URL) return CONFIG.API_URL;
+  if (typeof window !== "undefined" && window.CONFIG && window.CONFIG.API_URL) return window.CONFIG.API_URL;
+  throw new Error("ไม่พบ CONFIG.API_URL ใน config.js");
+}
+
+function apiAction(action, params) {
+  params = params || {};
+
+  return new Promise(function (resolve, reject) {
+    const callbackName = "peaCarsCb_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    const timeoutMs = (typeof CONFIG !== "undefined" && CONFIG.API_TIMEOUT) ? CONFIG.API_TIMEOUT : 60000;
+
+    const query = Object.keys(params).map(function (key) {
+      return encodeURIComponent(key) + "=" + encodeURIComponent(params[key]);
+    }).join("&");
+
+    const url =
+      getApiUrl() +
+      "?action=" + encodeURIComponent(action) +
+      (query ? "&" + query : "") +
+      "&callback=" + encodeURIComponent(callbackName) +
+      "&_ts=" + Date.now();
+
+    const script = document.createElement("script");
+    let done = false;
+
+    const timer = setTimeout(function () {
+      if (done) return;
+      done = true;
+      cleanup();
+      reject(new Error("API timeout: " + action));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try { delete window[callbackName]; } catch (e) { window[callbackName] = undefined; }
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[callbackName] = function (data) {
+      if (done) return;
+      done = true;
+      cleanup();
+
+      if (data && data.success === false) {
+        reject(new Error(data.message || ("API error: " + action)));
+        return;
+      }
+
+      resolve(data);
+    };
+
+    script.onerror = function () {
+      if (done) return;
+      done = true;
+      cleanup();
+      reject(new Error("โหลด API ไม่สำเร็จ: " + action));
+    };
+
+    script.src = url;
+    document.head.appendChild(script);
+  });
+}
+
 
 function bindEvents() {
   document.querySelectorAll(".nav-btn").forEach(function (btn) {
@@ -118,17 +184,16 @@ function showPage(page) {
 async function loadAllData() {
   try {
     setLoading(true);
+    detailCache.clear();
 
-    const dashboardRaw = await CarsAPI.getDashboard();
-    const projectsRaw = await CarsAPI.getProjects();
-    const queueRaw = await CarsAPI.getWorkQueue();
-    const alertsRaw = await CarsAPI.getAlertCenter();
+    // TURBO V6: โหลดหน้าแรกด้วย action=init เพียงครั้งเดียว
+    // init จะส่งเฉพาะ Dashboard + ACTIVE_PROJECT ไม่โหลด detail หนัก ๆ
+    const init = unwrapObject(await apiAction("init"));
 
-    const dashboard = unwrapObject(dashboardRaw);
-
-    allProjects = unwrapArray(projectsRaw);
-    workQueue = unwrapArray(queueRaw);
-    alertCenter = unwrapArray(alertsRaw);
+    const dashboard = init.dashboard || {};
+    allProjects = init.projects || [];
+    workQueue = init.workQueue || [];
+    alertCenter = init.alerts || [];
 
     renderKpi(dashboard);
     renderCharts(dashboard);
@@ -138,11 +203,35 @@ async function loadAllData() {
     renderAlertCenter(alertCenter);
     renderLastUpdate();
 
+    // โหลด Work Queue / Alert ตามหลังแบบ background ไม่บล็อก Dashboard
+    loadLazyDashboardLists();
+
   } catch (err) {
     console.error(err);
     alert("โหลดข้อมูลไม่สำเร็จ: " + err.message);
   } finally {
     setLoading(false);
+  }
+}
+
+async function loadLazyDashboardLists() {
+  try {
+    const results = await Promise.allSettled([
+      apiAction("workqueue"),
+      apiAction("alerts")
+    ]);
+
+    if (results[0].status === "fulfilled") {
+      workQueue = unwrapArray(results[0].value);
+      renderWorkQueue(workQueue);
+    }
+
+    if (results[1].status === "fulfilled") {
+      alertCenter = unwrapArray(results[1].value);
+      renderAlertCenter(alertCenter);
+    }
+  } catch (err) {
+    console.warn("Lazy list load skipped:", err);
   }
 }
 
@@ -626,50 +715,114 @@ async function openProjectDetail(wbs) {
   if (!modal || !title || !body) return;
 
   const cacheKey = normalizeKey(wbs);
-  const localProject = getProjectFromLocal(wbs);
+  const localProject = getProjectFromLocal(wbs) || { wbs: wbs };
 
-  try {
-    selectedProject = null;
+  selectedProject = localProject;
 
-    modal.classList.remove("hidden");
-    title.textContent = "กำลังโหลดรายละเอียดงาน: " + wbs;
-    body.innerHTML = renderModalLoading(wbs, localProject);
+  // TURBO V6.1 FULL DETAIL:
+  // 1) เปิด Modal ทันทีจาก ACTIVE_PROJECT
+  // 2) แสดง placeholder ครบทุกส่วน
+  // 3) โหลด Cost / Material / Document / Time แยก API แล้วแทนที่ทีละส่วน
+  modal.classList.remove("hidden");
+  title.textContent = "รายละเอียดงาน: " + (localProject.wbs || wbs);
+  body.innerHTML = renderProjectDetailShell(localProject);
 
-    if (detailCache.has(cacheKey)) {
-      const cachedDetail = detailCache.get(cacheKey);
-      const cachedProject = cachedDetail.project || localProject || cachedDetail;
-
-      selectedProject = cachedProject;
-      title.textContent = "รายละเอียดงาน: " + (cachedProject.wbs || wbs) + " (จากแคช)";
-      body.innerHTML = renderProjectDetail(cachedProject, cachedDetail);
-      return;
-    }
-
-    const rawDetail = await CarsAPI.getProjectDetail(wbs);
-    const detail = unwrapObject(rawDetail);
-    const project = detail.project || localProject || detail;
-
-    detailCache.set(cacheKey, detail);
-    selectedProject = project;
-
-    title.textContent = "รายละเอียดงาน: " + (project.wbs || wbs);
-    body.innerHTML = renderProjectDetail(project, detail);
-
-  } catch (err) {
-    console.error(err);
-
-    title.textContent = "เกิดข้อผิดพลาด";
-    body.innerHTML = `
-      <div class="modal-loading">
-        <div>
-          <div class="loading-title">โหลดรายละเอียดไม่สำเร็จ</div>
-          <div class="loading-sub">${escapeHtml(err.message)}</div>
-          <br>
-          <button onclick="openProjectDetail('${escapeAttr(wbs)}')">ลองโหลดใหม่</button>
-        </div>
-      </div>
-    `;
+  if (detailCache.has(cacheKey)) {
+    const cachedDetail = detailCache.get(cacheKey);
+    const cachedProject = cachedDetail.project || localProject;
+    selectedProject = cachedProject;
+    body.innerHTML = renderProjectDetail(cachedProject, cachedDetail);
+    return;
   }
+
+  const detail = {
+    success: true,
+    project: localProject,
+    cost: null,
+    material: null,
+    document: null,
+    time: null,
+    errors: [],
+    cacheMode: "frontend-lazy-v6-1-full-detail",
+    updatedAt: new Date()
+  };
+
+  loadDetailPart("cost", wbs, detail, function (data) {
+    detail.cost = data;
+    replaceDetailPart("cost", renderCostDetail(data));
+  });
+
+  loadDetailPart("material", wbs, detail, function (data) {
+    detail.material = data;
+    replaceDetailPart("material", renderMaterialDetail(data));
+  });
+
+  loadDetailPart("document", wbs, detail, function (data) {
+    detail.document = data;
+    replaceDetailPart("document", renderDocumentDetail(data));
+  });
+
+  loadDetailPart("time", wbs, detail, function (data) {
+    detail.time = data;
+    replaceDetailPart("time", renderTimeDetail(data));
+  });
+
+  // เก็บ cache หลังจากให้ API แต่ละส่วนมีเวลาตอบกลับเล็กน้อย
+  // ถ้ากดย้ำเร็ว ๆ จะยังเห็น shell ทันที และส่วนที่โหลดแล้วจะขึ้นเร็ว
+  setTimeout(function () {
+    detailCache.set(cacheKey, detail);
+  }, 1200);
+}
+
+function loadDetailPart(part, wbs, detail, onSuccess) {
+  const actionMap = {
+    cost: "costdetail",
+    material: "materialdetail",
+    document: "documentdetail",
+    time: "timedetail"
+  };
+
+  const action = actionMap[part];
+  if (!action) return;
+
+  setDetailPartLoading(part);
+
+  apiAction(action, { wbs: wbs })
+    .then(function (raw) {
+      const data = unwrapObject(raw);
+      onSuccess(data);
+    })
+    .catch(function (err) {
+      console.error("โหลดรายละเอียดส่วน " + part + " ไม่สำเร็จ", err);
+      detail.errors.push(part + ": " + err.message);
+      replaceDetailPart(part, renderDetailPartError(part, err.message, wbs));
+    });
+}
+
+function replaceDetailPart(part, html) {
+  const el = document.getElementById("detail-part-" + part);
+  if (!el) return;
+  el.outerHTML = html;
+}
+
+function renderDetailPartError(part, message, wbs) {
+  const titleMap = {
+    cost: "Cost Detail",
+    material: "Material Pending",
+    document: "Document Checklist",
+    time: "Time Detail"
+  };
+
+  return `
+    <div class="detail-section card" id="detail-part-${escapeAttr(part)}">
+      <h3>${escapeHtml(titleMap[part] || part)}</h3>
+      <div class="empty-state">
+        โหลดข้อมูลส่วนนี้ไม่สำเร็จ<br>
+        ${escapeHtml(message)}<br><br>
+        <button type="button" onclick="openProjectDetail('${escapeAttr(wbs)}')">ลองโหลดใหม่</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderModalLoading(wbs, project) {
@@ -698,6 +851,60 @@ function getProjectFromLocal(wbs) {
 
 function normalizeKey(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function renderProjectDetailShell(project) {
+  return `
+    <div class="detail-grid">
+      ${detailItem("WBS", project.wbs)}
+      ${detailItem("ชื่องาน", project.jobName)}
+      ${detailItem("ผู้รับผิดชอบ", project.owner)}
+      ${detailItem("จังหวัด", project.province)}
+      ${detailItem("สถานะระบบ", project.systemStatus)}
+      ${detailItem("สถานะผู้ใช้", project.userStatus)}
+      ${detailItem("Priority", project.priority)}
+      ${detailItem("Ready", project.readyToClose || project.closureStatus)}
+      ${detailItem("Cost", formatPercent(project.costPercent) + " / " + safeValue(project.costStatus))}
+      ${detailItem("Material", formatPercent(project.materialPercent) + " / " + safeValue(project.materialStatus))}
+      ${detailItem("Document", formatPercent(project.documentPercent) + " / " + safeValue(project.documentStatus))}
+      ${detailItem("Time", formatPercent(project.timePercent) + " / " + safeValue(project.timeStatus))}
+    </div>
+
+    <div class="detail-section card">
+      <h3>Main Issue</h3>
+      <p>${escapeHtml(project.mainIssue || "-")}</p>
+    </div>
+
+    <div class="detail-section card">
+      <h3>Recommended Action</h3>
+      <p>${escapeHtml(project.action || "-")}</p>
+    </div>
+
+    ${renderLazyDetailPlaceholder("cost", "Cost Detail")}
+    ${renderLazyDetailPlaceholder("material", "Material Pending")}
+    ${renderLazyDetailPlaceholder("document", "Document Checklist")}
+    ${renderLazyDetailPlaceholder("time", "Time Detail")}
+  `;
+}
+
+function renderLazyDetailPlaceholder(part, title) {
+  return `
+    <div class="detail-section card" id="detail-part-${escapeAttr(part)}">
+      <h3>${escapeHtml(title)}</h3>
+      <div class="modal-loading mini">
+        <div>
+          <div class="loader-ring small"></div>
+          <div class="loading-title">กำลังโหลด ${escapeHtml(title)}</div>
+          <div class="loading-sub">ระบบกำลังดึงข้อมูลเฉพาะส่วนนี้...</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function setDetailPartLoading(part) {
+  const el = document.getElementById("detail-part-" + part);
+  if (!el) return;
 }
 
 function renderProjectDetail(project, detail) {
@@ -756,7 +963,7 @@ function renderCostDetail(cost) {
   }).join("");
 
   return `
-    <div class="detail-section card">
+    <div class="detail-section card" id="detail-part-cost">
       <h3>Cost Detail</h3>
       <div class="table-wrap">
         <table>
@@ -791,7 +998,7 @@ function renderMaterialDetail(material) {
   }).join("");
 
   return `
-    <div class="detail-section card">
+    <div class="detail-section card" id="detail-part-material">
       <h3>Material Pending</h3>
       <p class="muted">
         รายการทั้งหมด ${material.totalItems || 0} รายการ /
@@ -862,7 +1069,7 @@ function renderDocumentDetail(documentDetail) {
   }).join("");
 
   return `
-    <div class="detail-section card">
+    <div class="detail-section card" id="detail-part-document">
       <h3>Document Checklist</h3>
 
       <p class="muted">
@@ -954,7 +1161,7 @@ async function saveDocumentChecklistFromModal(wbs) {
     const ok = confirm("ยืนยันบันทึก Checklist จำนวน " + items.length + " รายการ?");
     if (!ok) return;
 
-    const result = await CarsAPI.saveChecklist(items);
+    const result = await apiAction("savechecklist", { items: JSON.stringify(items) });
 
     if (result && result.success === false) {
       alert("บันทึกไม่สำเร็จ: " + (result.message || ""));
@@ -1016,7 +1223,7 @@ function setAllChecklistStatus(status) {
 
 function renderTimeDetail(time) {
   return `
-    <div class="detail-section card">
+    <div class="detail-section card" id="detail-part-time">
       <h3>Time Detail</h3>
       <div class="detail-grid">
         ${detailItem("Plan Time", time.planTime)}
@@ -1039,7 +1246,7 @@ function closeModal() {
 
 async function exportExcel() {
   try {
-    const result = await CarsAPI.exportExcel();
+    const result = await apiAction("exportexcel");
 
     if (result && result.url) {
       window.open(result.url, "_blank");
@@ -1053,7 +1260,7 @@ async function exportExcel() {
 
 async function exportProjectPdf(wbs) {
   try {
-    const result = await CarsAPI.exportPdf(wbs);
+    const result = await apiAction("exportpdf", { wbs: wbs });
 
     if (result && result.url) {
       window.open(result.url, "_blank");
