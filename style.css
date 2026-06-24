@@ -1120,4 +1120,34 @@ td.text-wrap {
   .modal-body {
     padding: 14px;
   }
+}.modal-loading {
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  color: #f8fafc;
+  text-align: center;
+}
+
+.loader-ring {
+  width: 54px;
+  height: 54px;
+  border: 5px solid rgba(148, 163, 184, .25);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin: 0 auto 18px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-title {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.loading-sub {
+  margin-top: 8px;
+  color: #94a3b8;
 }
