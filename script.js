@@ -1,5 +1,5 @@
 /* =========================================================
-   PEA CARS+ V4 Professional Edition - Turbo V6.1 Full Detail
+   PEA CARS+ V4 Professional Edition - Turbo V6.2 Stable Filter Logic
    File: script.js
    Copy ทั้งไฟล์นี้ไปวางทับ script.js เดิม
 ========================================================= */
@@ -233,10 +233,13 @@ async function loadAllData() {
     // init จะส่งเฉพาะ Dashboard + ACTIVE_PROJECT ไม่โหลด detail หนัก ๆ
     const init = unwrapObject(await apiAction("init"));
 
-    const dashboard = init.dashboard || {};
     allProjects = init.projects || [];
     workQueue = init.workQueue || [];
     alertCenter = init.alerts || [];
+
+    // V6.2: คำนวณ KPI จาก allProjects ด้วย Logic เดียวกับตอนกด Filter
+    // เพื่อให้จำนวนบนการ์ดตรงกับรายการที่แสดงด้านล่างเสมอ
+    const dashboard = buildDashboardFromProjects(allProjects, init.dashboard || {});
 
     renderKpi(dashboard);
     renderCharts(dashboard);
@@ -302,6 +305,60 @@ function renderLastUpdate() {
    KPI
 ========================= */
 
+
+function buildDashboardFromProjects(projects, fallback) {
+  projects = Array.isArray(projects) ? projects : [];
+  fallback = fallback || {};
+
+  return {
+    total: projects.length,
+    ready: projects.filter(isReadyProject).length,
+    notReady: projects.filter(isNotReadyProject).length,
+    closed: projects.filter(isClosedProject).length,
+    docIssue: projects.filter(hasDocumentIssue).length,
+    materialIssue: projects.filter(hasMaterialIssue).length,
+    costIssue: projects.filter(hasCostIssue).length,
+    timeIssue: projects.filter(hasTimeIssue).length,
+    rel: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "REL"; }).length,
+    teco: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "TECO"; }).length,
+    clsd: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "CLSD"; }).length,
+    _source: fallback._source || "frontend-v6-2"
+  };
+}
+
+function isClosedProject(p) {
+  return String(p.systemStatus || "").toUpperCase() === "CLSD" ||
+    String(p.closureStatus || "").trim() === "ปิดแล้ว";
+}
+
+function isReadyProject(p) {
+  const ready = String(p.readyToClose || "").toUpperCase() === "YES" ||
+    String(p.closureStatus || "").trim() === "พร้อมปิดงาน" ||
+    String(p.priority || "").toUpperCase() === "P4";
+
+  return ready && !isClosedProject(p);
+}
+
+function isNotReadyProject(p) {
+  return !isReadyProject(p) && !isClosedProject(p);
+}
+
+function hasDocumentIssue(p) {
+  return !isPassStatus(p.documentStatus) && !isClosedProject(p);
+}
+
+function hasMaterialIssue(p) {
+  return !isPassStatus(p.materialStatus) && !isClosedProject(p);
+}
+
+function hasCostIssue(p) {
+  return !isPassStatus(p.costStatus) && !isClosedProject(p);
+}
+
+function hasTimeIssue(p) {
+  return !!p.timeStatus && !isPassStatus(p.timeStatus) && !isClosedProject(p);
+}
+
 function renderKpi(data) {
   const kpiGrid = document.getElementById("kpiGrid");
   if (!kpiGrid) return;
@@ -349,54 +406,37 @@ function applyDashboardFilter(type) {
   switch (activeDashboardFilter) {
     case "ready":
       filterTitle = "พร้อมปิดงาน";
-      filtered = allProjects.filter(function (p) {
-        return String(p.readyToClose || "").toUpperCase() === "YES" ||
-          p.closureStatus === "พร้อมปิดงาน";
-      });
+      filtered = allProjects.filter(isReadyProject);
       break;
 
     case "notReady":
       filterTitle = "ยังไม่พร้อม";
-      filtered = allProjects.filter(function (p) {
-        return String(p.readyToClose || "").toUpperCase() !== "YES" &&
-          p.closureStatus !== "พร้อมปิดงาน" &&
-          p.closureStatus !== "ปิดแล้ว";
-      });
+      filtered = allProjects.filter(isNotReadyProject);
       break;
 
     case "closed":
       filterTitle = "ปิดแล้ว";
-      filtered = allProjects.filter(function (p) {
-        return p.closureStatus === "ปิดแล้ว" || String(p.systemStatus || "").toUpperCase() === "CLSD";
-      });
+      filtered = allProjects.filter(isClosedProject);
       break;
 
     case "docIssue":
       filterTitle = "ติดเอกสาร";
-      filtered = allProjects.filter(function (p) {
-        return !isPassStatus(p.documentStatus);
-      });
+      filtered = allProjects.filter(hasDocumentIssue);
       break;
 
     case "materialIssue":
       filterTitle = "ติดพัสดุ";
-      filtered = allProjects.filter(function (p) {
-        return !isPassStatus(p.materialStatus);
-      });
+      filtered = allProjects.filter(hasMaterialIssue);
       break;
 
     case "costIssue":
       filterTitle = "ติดค่าใช้จ่าย";
-      filtered = allProjects.filter(function (p) {
-        return !isPassStatus(p.costStatus);
-      });
+      filtered = allProjects.filter(hasCostIssue);
       break;
 
     case "timeIssue":
       filterTitle = "ติด Time";
-      filtered = allProjects.filter(function (p) {
-        return p.timeStatus && !isPassStatus(p.timeStatus);
-      });
+      filtered = allProjects.filter(hasTimeIssue);
       break;
 
     case "rel":
@@ -1498,9 +1538,7 @@ function localAssistant(text) {
   if (byOwner.length) return ownerSummaryText(byOwner);
 
   if (q.includes("ติดพัสดุ")) {
-    const list = allProjects.filter(function (p) {
-      return !isPassStatus(p.materialStatus);
-    });
+    const list = allProjects.filter(hasMaterialIssue);
 
     return "งานติดพัสดุ " + list.length + " งาน\n" +
       list.slice(0, 10).map(function (p, i) {
@@ -1509,9 +1547,7 @@ function localAssistant(text) {
   }
 
   if (q.includes("ติดเอกสาร")) {
-    const list = allProjects.filter(function (p) {
-      return !isPassStatus(p.documentStatus);
-    });
+    const list = allProjects.filter(hasDocumentIssue);
 
     return "งานติดเอกสาร " + list.length + " งาน\n" +
       list.slice(0, 10).map(function (p, i) {
@@ -1520,10 +1556,7 @@ function localAssistant(text) {
   }
 
   if (q.includes("พร้อมปิด")) {
-    const list = allProjects.filter(function (p) {
-      return String(p.readyToClose || "").toUpperCase() === "YES" ||
-        p.closureStatus === "พร้อมปิดงาน";
-    });
+    const list = allProjects.filter(isReadyProject);
 
     return "งานพร้อมปิด " + list.length + " งาน\n" +
       list.slice(0, 10).map(function (p, i) {
@@ -1555,10 +1588,7 @@ Priority: ${p.priority || "-"}
 
 function ownerSummaryText(list) {
   const owner = list[0].owner || "-";
-  const notReady = list.filter(function (p) {
-    return String(p.readyToClose || "").toUpperCase() !== "YES" &&
-      p.closureStatus !== "พร้อมปิดงาน";
-  });
+  const notReady = list.filter(isNotReadyProject);
 
   return `
 พบงานของ ${owner} จำนวน ${list.length} งาน
