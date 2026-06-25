@@ -16,6 +16,7 @@ const detailCache = new Map();
 
 document.addEventListener("DOMContentLoaded", function () {
   injectDashboardFilterStyle();
+  injectAssistantClearButton();
   bindEvents();
   loadAllData();
 });
@@ -35,6 +36,48 @@ function injectDashboardFilterStyle() {
     }
   `;
   document.head.appendChild(style);
+}
+
+
+function injectAssistantClearButton() {
+  if (document.getElementById("clearChatBtn")) return;
+
+  const chatBox = document.getElementById("chatBox");
+  const sendBtn = document.getElementById("assistantSendBtn");
+  const input = document.getElementById("assistantInput");
+
+  if (!chatBox && !sendBtn && !input) return;
+
+  const btn = document.createElement("button");
+  btn.id = "clearChatBtn";
+  btn.type = "button";
+  btn.textContent = "🧹 ล้างข้อความ";
+  btn.title = "ล้างข้อความใน AI Assistant";
+  btn.style.marginLeft = "8px";
+
+  btn.addEventListener("click", clearAssistantChat);
+
+  if (sendBtn && sendBtn.parentNode) {
+    sendBtn.parentNode.insertBefore(btn, sendBtn.nextSibling);
+  } else if (input && input.parentNode) {
+    input.parentNode.appendChild(btn);
+  }
+}
+
+function clearAssistantChat() {
+  const box = document.getElementById("chatBox");
+  if (!box) return;
+
+  box.innerHTML = `
+    <div class="bot-msg">
+      สวัสดีครับ ผมคือ PEA CARS+ Assistant<br>
+      พิมพ์ WBS, ชื่อผู้รับผิดชอบ, "ติดเอกสาร", "ติดพัสดุ", "ติดค่าใช้จ่าย", "ติด Time" หรือ "พร้อมปิด" ได้เลยครับ
+    </div>
+  `;
+}
+
+if (typeof window !== "undefined") {
+  window.clearAssistantChat = clearAssistantChat;
 }
 
 function unwrapArray(response) {
@@ -178,6 +221,9 @@ function bindEvents() {
 
   const assistantSendBtn = document.getElementById("assistantSendBtn");
   if (assistantSendBtn) assistantSendBtn.addEventListener("click", askAssistant);
+
+  const clearChatBtn = document.getElementById("clearChatBtn");
+  if (clearChatBtn) clearChatBtn.addEventListener("click", clearAssistantChat);
 
   const assistantInput = document.getElementById("assistantInput");
   if (assistantInput) {
@@ -332,9 +378,11 @@ function isClosedProject(p) {
 }
 
 function isReadyProject(p) {
+  // V6.3: พร้อมปิดงานต้องยึด Ready/Closure เท่านั้น
+  // ไม่ใช้ Priority P4 เป็นเงื่อนไข เพราะ P4 อาจเป็นเพียงระดับความพร้อม
+  // และอาจมีงาน CLSD / ปิดแล้วปนมาได้
   const ready = String(p.readyToClose || "").toUpperCase() === "YES" ||
-    String(p.closureStatus || "").trim() === "พร้อมปิดงาน" ||
-    String(p.priority || "").toUpperCase() === "P4";
+    String(p.closureStatus || "").trim() === "พร้อมปิดงาน";
 
   return ready && !isClosedProject(p);
 }
@@ -1552,6 +1600,24 @@ function localAssistant(text) {
     return "งานติดเอกสาร " + list.length + " งาน\n" +
       list.slice(0, 10).map(function (p, i) {
         return (i + 1) + ") " + p.wbs;
+      }).join("\n");
+  }
+
+  if (q.includes("ติดค่าใช้จ่าย") || q.includes("ค่าใช้จ่าย")) {
+    const list = allProjects.filter(hasCostIssue);
+
+    return "งานติดค่าใช้จ่าย " + list.length + " งาน\n" +
+      list.slice(0, 10).map(function (p, i) {
+        return (i + 1) + ") " + p.wbs + " " + formatPercent(p.costPercent);
+      }).join("\n");
+  }
+
+  if (q.includes("ติด time") || q.includes("ติดไทม์") || q.includes("time")) {
+    const list = allProjects.filter(hasTimeIssue);
+
+    return "งานติด Time " + list.length + " งาน\n" +
+      list.slice(0, 10).map(function (p, i) {
+        return (i + 1) + ") " + p.wbs + " " + formatPercent(p.timePercent);
       }).join("\n");
   }
 
