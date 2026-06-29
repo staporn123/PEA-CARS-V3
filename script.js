@@ -1278,6 +1278,7 @@ async function openProjectDetail(wbs) {
     material: null,
     document: null,
     time: null,
+    timeline: null,
     errors: [],
     cacheMode: "frontend-lazy-v6-1-full-detail",
     updatedAt: new Date()
@@ -1303,6 +1304,12 @@ async function openProjectDetail(wbs) {
     replaceDetailPart("time", renderTimeDetail(data));
   });
 
+  loadDetailPart("timeline", wbs, detail, function (data) {
+    detail.timeline = data;
+    applyTimelineDetailToProject(localProject, data);
+    replaceDetailPart("timeline", renderTimelineDetail(data, localProject));
+  });
+
   // เก็บ cache หลังจากให้ API แต่ละส่วนมีเวลาตอบกลับเล็กน้อย
   // ถ้ากดย้ำเร็ว ๆ จะยังเห็น shell ทันที และส่วนที่โหลดแล้วจะขึ้นเร็ว
   setTimeout(function () {
@@ -1315,7 +1322,8 @@ function loadDetailPart(part, wbs, detail, onSuccess) {
     cost: "costdetail",
     material: "materialdetail",
     document: "documentdetail",
-    time: "timedetail"
+    time: "timedetail",
+    timeline: "timelinedetail"
   };
 
   const action = actionMap[part];
@@ -1419,6 +1427,7 @@ function renderProjectDetailShell(project) {
     ${renderProjectTimelineSummary(project)}
     ${renderMaterialWaitingSummary(project)}
 
+    ${renderLazyDetailPlaceholder("timeline", "Project Timeline / Workflow")}
     ${renderLazyDetailPlaceholder("cost", "Cost Detail")}
     ${renderLazyDetailPlaceholder("material", "Material Pending")}
     ${renderLazyDetailPlaceholder("document", "Document Checklist")}
@@ -1483,6 +1492,87 @@ function timelineDetailChip(label, value) {
 }
 
 
+
+function applyTimelineDetailToProject(project, data) {
+  if (!project || !data) return;
+
+  const tl = data.timeline || null;
+  const mw = data.materialWaiting || null;
+
+  if (tl) {
+    project.timeline = tl;
+    project.a0Source = tl.a0Source || tl.source || project.a0Source || "";
+    project.sapChangeCount = tl.sapChangeCount;
+    project.cpmChangeCount = tl.cpmChangeCount;
+  }
+
+  if (mw) {
+    project.materialWaiting = mw;
+    project.isC3Waiting = true;
+    project.c3WaitingDays = mw.waitingDays;
+    project.c3PendingCount = mw.pendingCount;
+    project.c3PendingValue = mw.pendingValue;
+    project.c3MainMaterials = mw.mainItems || mw.mainMaterialSummary || mw.mainMaterials || mw.allItems || "";
+  }
+}
+
+function renderTimelineDetail(data, project) {
+  data = data || {};
+  project = project || selectedProject || {};
+
+  const tl = data.timeline || project.timeline || getTimelineForWbs(project.wbs) || {};
+  const mw = data.materialWaiting || project.materialWaiting || getMaterialWaitingForWbs(project.wbs) || null;
+
+  const a0Source = tl.a0Source || tl.source || project.a0Source || "-";
+  const sapCount = (tl.sapChangeCount !== undefined && tl.sapChangeCount !== "") ? tl.sapChangeCount : (project.sapChangeCount ?? 0);
+  const cpmCount = (tl.cpmChangeCount !== undefined && tl.cpmChangeCount !== "") ? tl.cpmChangeCount : (project.cpmChangeCount ?? 0);
+  const stageCurrent = tl.currentStage || tl.userStatus || project.userStatus || "-";
+  const stageAge = (tl.stageAgeDays !== undefined && tl.stageAgeDays !== "") ? tl.stageAgeDays : "-";
+  const projectAge = (tl.projectAgeDays !== undefined && tl.projectAgeDays !== "") ? tl.projectAgeDays : "-";
+  const waitingDays = mw ? (mw.waitingDays || tl.materialWaitingDays || project.c3WaitingDays || 0) : (tl.materialWaitingDays || project.c3WaitingDays || 0);
+  const pendingCount = mw ? (mw.pendingCount || project.c3PendingCount || 0) : (project.c3PendingCount || 0);
+  const pendingValue = mw ? (mw.pendingValue || project.c3PendingValue || 0) : (project.c3PendingValue || 0);
+  const delayReason = tl.delayReason || (mw ? (mw.remark || "หยุดงานรอพัสดุ") : "-");
+  const lastUser = tl.lastUser || "-";
+  const startDate = tl.projectStartDate || "-";
+  const updateText = getDataUpdateText();
+
+  const materialText = (mw && (mw.mainItems || mw.mainMaterialSummary || mw.mainMaterials || mw.allItems || mw.materialItems)) || project.c3MainMaterials || "";
+  const materialTags = String(materialText || "")
+    .split(",")
+    .map(function (x) { return x.trim(); })
+    .filter(Boolean)
+    .slice(0, 20);
+
+  return `
+    <div class="detail-section card" id="detail-part-timeline">
+      <h3>Project Timeline / Workflow</h3>
+      <p class="muted">ข้อมูลล่าสุดจากหลังบ้าน: ${escapeHtml(updateText)}</p>
+
+      <div class="timeline-summary-grid">
+        ${timelineDetailChip("รอพัสดุแล้ว", safeValue(waitingDays) + " วัน")}
+        ${timelineDetailChip("Stage ปัจจุบัน", stageCurrent)}
+        ${timelineDetailChip("Stage ค้าง", safeValue(stageAge) + " วัน")}
+        ${timelineDetailChip("อายุโครงการ", safeValue(projectAge) + " วัน")}
+        ${timelineDetailChip("A0 Source", a0Source)}
+        ${timelineDetailChip("SAP Change", safeValue(sapCount) + " ครั้ง")}
+        ${timelineDetailChip("CPM Change", safeValue(cpmCount) + " ครั้ง")}
+        ${timelineDetailChip("ผู้เปลี่ยนล่าสุด", lastUser)}
+        ${timelineDetailChip("วันเริ่มต้น", startDate)}
+        ${timelineDetailChip("รายการพัสดุค้าง", safeValue(pendingCount) + " รายการ")}
+        ${timelineDetailChip("มูลค่าพัสดุค้าง", formatMoney(pendingValue || 0) + " บาท")}
+        ${timelineDetailChip("Delay Reason", delayReason)}
+      </div>
+
+      <div class="material-tags">
+        ${materialTags.length ? materialTags.map(function (t) {
+          return `<span class="material-tag">${escapeHtml(t)}</span>`;
+        }).join("") : `<span class="material-tag">ไม่มีข้อมูลพัสดุหลักที่ค้าง</span>`}
+      </div>
+    </div>
+  `;
+}
+
 function renderLazyDetailPlaceholder(part, title) {
   return `
     <div class="detail-section card" id="detail-part-${escapeAttr(part)}">
@@ -1541,6 +1631,7 @@ function renderDetailSections(detail) {
   if (detail.material && detail.material.pendingItems) html += renderMaterialDetail(detail.material);
   if (detail.document && detail.document.items) html += renderDocumentDetail(detail.document);
   if (detail.time) html += renderTimeDetail(detail.time);
+  if (detail.timeline) html += renderTimelineDetail(detail.timeline, detail.project);
 
   return html;
 }
