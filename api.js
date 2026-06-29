@@ -102,6 +102,18 @@ class CarsAPI {
     return this.request("timedetail", { wbs });
   }
 
+  static getTimelineDetail(wbs) {
+    return this.request("timelinedetail", { wbs });
+  }
+
+  static getMaterialWaiting() {
+    return this.request("materialwaiting");
+  }
+
+  static getLastUpdate() {
+    return this.request("lastupdate");
+  }
+
   static exportExcel() {
     return this.request("exportexcel");
   }
