@@ -138,6 +138,7 @@ if (typeof window !== "undefined") {
 
 function unwrapArray(response) {
   if (Array.isArray(response)) return response;
+  if (response && Array.isArray(response.items)) return response.items;
   if (response && Array.isArray(response.data)) return response.data;
   if (response && Array.isArray(response.rows)) return response.rows;
   return [];
@@ -340,7 +341,7 @@ async function loadAllData() {
     alertCenter = init.alerts || [];
     materialWaiting = normalizeMaterialWaitingRows(init.materialWaiting || init.materialWaitingC3 || init.c3Waiting || []);
     projectTimeline = normalizeTimelineRows(init.projectTimeline || init.timeline || []);
-    dataUpdateInfo = init.dataUpdate || init.dataUpdateInfo || init.lastDataUpdate || init.updatedAt || null;
+    dataUpdateInfo = init.dataUpdate || init.dataUpdateInfo || (init.dashboard && init.dashboard.dataUpdate) || (init.dashboard && init.dashboard.lastDataUpdate) || init.lastDataUpdate || init.updatedAt || null;
 
     enrichProjectsWithC3Info();
 
@@ -387,6 +388,7 @@ async function loadLazyDashboardLists() {
     }
 
     if (results[2].status === "fulfilled") {
+      if (results[2].value && results[2].value.updatedAt) dataUpdateInfo = results[2].value.updatedAt;
       const mw = unwrapArray(results[2].value);
       if (mw.length) {
         materialWaiting = normalizeMaterialWaitingRows(mw);
@@ -426,6 +428,7 @@ function getDataUpdateText() {
 
   if (typeof dataUpdateInfo === "string") return formatDateTimeText(dataUpdateInfo);
 
+  if (dataUpdateInfo.lastUpdateDisplay) return String(dataUpdateInfo.lastUpdateDisplay);
   if (dataUpdateInfo.lastUpdate) return formatDateTimeText(dataUpdateInfo.lastUpdate);
   if (dataUpdateInfo.updatedAt) return formatDateTimeText(dataUpdateInfo.updatedAt);
   if (dataUpdateInfo.time) return formatDateTimeText(dataUpdateInfo.time);
@@ -470,7 +473,7 @@ function buildDashboardFromProjects(projects, fallback) {
     rel: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "REL"; }).length,
     teco: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "TECO"; }).length,
     clsd: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "CLSD"; }).length,
-    c3Waiting: projects.filter(isC3WaitingProject).length,
+    c3Waiting: Math.max(projects.filter(isC3WaitingProject).length, Number(fallback.c3Waiting || fallback.materialWaitingC3 || 0)),
     c3MaxDays: getC3MaxWaitingDays(projects),
     materialWaitingValue: getMaterialWaitingTotalValue(),
     _source: fallback._source || "frontend-v6-2"
@@ -1354,7 +1357,8 @@ function renderDetailPartError(part, message, wbs) {
     cost: "Cost Detail",
     material: "Material Pending",
     document: "Document Checklist",
-    time: "Time Detail"
+    time: "Time Detail",
+    timeline: "Project Timeline / Workflow"
   };
 
   return `
