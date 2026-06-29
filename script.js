@@ -7,6 +7,9 @@
 let allProjects = [];
 let workQueue = [];
 let alertCenter = [];
+let materialWaiting = [];
+let projectTimeline = [];
+let dataUpdateInfo = null;
 
 let statusChart = null;
 let issueChart = null;
@@ -33,6 +36,59 @@ function injectDashboardFilterStyle() {
       border-color: rgba(56, 189, 248, 0.9) !important;
       box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18), 0 18px 45px rgba(37, 99, 235, 0.34) !important;
       transform: translateY(-2px);
+    }
+    .kpi-card.kpi-c3 {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(124, 58, 237, 0.16));
+    }
+    .timeline-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .timeline-chip {
+      padding: 10px 12px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.42);
+    }
+    .timeline-chip-label {
+      color: #94a3b8;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .timeline-chip-value {
+      color: #f8fafc;
+      font-weight: 800;
+      font-size: 15px;
+    }
+    .material-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .material-tag {
+      border: 1px solid rgba(56, 189, 248, 0.26);
+      background: rgba(14, 165, 233, 0.12);
+      color: #dbeafe;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      max-width: 100%;
+    }
+    .last-update-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, .6);
+      border: 1px solid rgba(148, 163, 184, .22);
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 700;
     }
   `;
   document.head.appendChild(style);
@@ -282,6 +338,11 @@ async function loadAllData() {
     allProjects = init.projects || [];
     workQueue = init.workQueue || [];
     alertCenter = init.alerts || [];
+    materialWaiting = normalizeMaterialWaitingRows(init.materialWaiting || init.materialWaitingC3 || init.c3Waiting || []);
+    projectTimeline = normalizeTimelineRows(init.projectTimeline || init.timeline || []);
+    dataUpdateInfo = init.dataUpdate || init.dataUpdateInfo || init.lastDataUpdate || init.updatedAt || null;
+
+    enrichProjectsWithC3Info();
 
     // V6.2: คำนวณ KPI จาก allProjects ด้วย Logic เดียวกับตอนกด Filter
     // เพื่อให้จำนวนบนการ์ดตรงกับรายการที่แสดงด้านล่างเสมอ
@@ -311,7 +372,8 @@ async function loadLazyDashboardLists() {
   try {
     const results = await Promise.allSettled([
       apiAction("workqueue"),
-      apiAction("alerts")
+      apiAction("alerts"),
+      apiAction("materialwaiting")
     ]);
 
     if (results[0].status === "fulfilled") {
@@ -322,6 +384,18 @@ async function loadLazyDashboardLists() {
     if (results[1].status === "fulfilled") {
       alertCenter = unwrapArray(results[1].value);
       renderAlertCenter(alertCenter);
+    }
+
+    if (results[2].status === "fulfilled") {
+      const mw = unwrapArray(results[2].value);
+      if (mw.length) {
+        materialWaiting = normalizeMaterialWaitingRows(mw);
+        enrichProjectsWithC3Info();
+        const dashboard = buildDashboardFromProjects(allProjects, {});
+        renderKpi(dashboard);
+        renderCharts(dashboard);
+        if (activeDashboardFilter === "c3Waiting") applyDashboardFilter("c3Waiting");
+      }
     }
   } catch (err) {
     console.warn("Lazy list load skipped:", err);
@@ -343,8 +417,36 @@ function renderLastUpdate() {
   const el = document.getElementById("lastUpdate");
   if (!el) return;
 
-  const now = new Date();
-  el.textContent = "อัปเดตล่าสุด: " + now.toLocaleString("th-TH");
+  const stamp = getDataUpdateText();
+  el.innerHTML = `<span class="last-update-chip">🕘 ข้อมูลล่าสุด: ${escapeHtml(stamp)}</span>`;
+}
+
+function getDataUpdateText() {
+  if (!dataUpdateInfo) return new Date().toLocaleString("th-TH");
+
+  if (typeof dataUpdateInfo === "string") return formatDateTimeText(dataUpdateInfo);
+
+  if (dataUpdateInfo.lastUpdate) return formatDateTimeText(dataUpdateInfo.lastUpdate);
+  if (dataUpdateInfo.updatedAt) return formatDateTimeText(dataUpdateInfo.updatedAt);
+  if (dataUpdateInfo.time) return formatDateTimeText(dataUpdateInfo.time);
+
+  if (Array.isArray(dataUpdateInfo.rows) && dataUpdateInfo.rows.length) {
+    const last = dataUpdateInfo.rows
+      .map(function (r) { return r.lastUpdate || r.updatedAt || r[1] || ""; })
+      .filter(Boolean)
+      .sort()
+      .pop();
+    if (last) return formatDateTimeText(last);
+  }
+
+  return new Date().toLocaleString("th-TH");
+}
+
+function formatDateTimeText(value) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) return d.toLocaleString("th-TH");
+  return String(value);
 }
 
 /* =========================
@@ -368,6 +470,9 @@ function buildDashboardFromProjects(projects, fallback) {
     rel: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "REL"; }).length,
     teco: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "TECO"; }).length,
     clsd: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "CLSD"; }).length,
+    c3Waiting: projects.filter(isC3WaitingProject).length,
+    c3MaxDays: getC3MaxWaitingDays(projects),
+    materialWaitingValue: getMaterialWaitingTotalValue(),
     _source: fallback._source || "frontend-v6-2"
   };
 }
@@ -407,6 +512,167 @@ function hasTimeIssue(p) {
   return !!p.timeStatus && !isPassStatus(p.timeStatus) && !isClosedProject(p);
 }
 
+
+function normalizeMaterialWaitingRows(rows) {
+  rows = unwrapArray(rows);
+  return rows.map(function (r) {
+    if (!r) return null;
+
+    if (Array.isArray(r)) {
+      return {
+        wbs: safeValueRaw(r[0]),
+        jobName: safeValueRaw(r[1]),
+        owner: safeValueRaw(r[2]),
+        province: safeValueRaw(r[3]),
+        status: safeValueRaw(r[4]),
+        waitingDays: numberOrBlank(r[5]),
+        pendingCount: numberOrBlank(r[6]),
+        pendingValue: numberOrBlank(r[7]),
+        pendingMaterials: safeValueRaw(r[8]),
+        priority: safeValueRaw(r[9]),
+        remark: safeValueRaw(r[10]),
+        mainMaterials: safeValueRaw(r[11])
+      };
+    }
+
+    return {
+      wbs: safeValueRaw(r.wbs || r.WBS),
+      jobName: safeValueRaw(r.jobName || r["ชื่องาน"]),
+      owner: safeValueRaw(r.owner || r.responsible || r["ผู้รับผิดชอบ"]),
+      province: safeValueRaw(r.province || r["จังหวัด"]),
+      status: safeValueRaw(r.status || r.currentStatus || r["สถานะ"]),
+      waitingDays: numberOrBlank(r.waitingDays || r.materialWaitingDays || r["รอพัสดุ (วัน)"] || r["รอพัสดุ"]),
+      pendingCount: numberOrBlank(r.pendingCount || r.pendingItems || r["จำนวนรายการค้าง"]),
+      pendingValue: numberOrBlank(r.pendingValue || r.pendingAmount || r["มูลค่าค้าง"]),
+      pendingMaterials: safeValueRaw(r.pendingMaterials || r.allPendingMaterials || r["รายการพัสดุค้างทั้งหมด"]),
+      priority: safeValueRaw(r.priority || r.Priority),
+      remark: safeValueRaw(r.remark || r["หมายเหตุ"]),
+      mainMaterials: safeValueRaw(r.mainMaterials || r.criticalMaterials || r["สรุปพัสดุหลักที่ค้าง"])
+    };
+  }).filter(function (r) {
+    return r && r.wbs;
+  });
+}
+
+function normalizeTimelineRows(rows) {
+  rows = unwrapArray(rows);
+  return rows.map(function (r) {
+    if (!r) return null;
+
+    if (Array.isArray(r)) {
+      return {
+        wbs: safeValueRaw(r[0]),
+        jobName: safeValueRaw(r[1]),
+        owner: safeValueRaw(r[2]),
+        province: safeValueRaw(r[3]),
+        systemStatus: safeValueRaw(r[4]),
+        userStatus: safeValueRaw(r[5]),
+        source: safeValueRaw(r[32]),
+        sapChangeCount: numberOrBlank(r[33]),
+        cpmChangeCount: numberOrBlank(r[34])
+      };
+    }
+
+    return {
+      wbs: safeValueRaw(r.wbs || r.WBS),
+      jobName: safeValueRaw(r.jobName || r["ชื่องาน"]),
+      owner: safeValueRaw(r.owner || r["ผู้รับผิดชอบ"]),
+      province: safeValueRaw(r.province || r["จังหวัด"]),
+      systemStatus: safeValueRaw(r.systemStatus || r["สถานะ SAP ปัจจุบัน"]),
+      userStatus: safeValueRaw(r.userStatus || r.stage || r["Stage ปัจจุบัน"]),
+      source: safeValueRaw(r.a0Source || r["A0 Source"]),
+      sapChangeCount: numberOrBlank(r.sapChangeCount || r["SAP Change Count"]),
+      cpmChangeCount: numberOrBlank(r.cpmChangeCount || r["CPM Change Count"])
+    };
+  }).filter(function (r) {
+    return r && r.wbs;
+  });
+}
+
+function enrichProjectsWithC3Info() {
+  const mwMap = new Map();
+  materialWaiting.forEach(function (m) {
+    mwMap.set(normalizeKey(m.wbs), m);
+  });
+
+  const tlMap = new Map();
+  projectTimeline.forEach(function (t) {
+    tlMap.set(normalizeKey(t.wbs), t);
+  });
+
+  allProjects = allProjects.map(function (p) {
+    const key = normalizeKey(p.wbs);
+    const mw = mwMap.get(key);
+    const tl = tlMap.get(key);
+
+    if (mw) {
+      p.materialWaiting = mw;
+      p.isC3Waiting = true;
+      p.c3WaitingDays = mw.waitingDays;
+      p.c3PendingCount = mw.pendingCount;
+      p.c3PendingValue = mw.pendingValue;
+      p.c3MainMaterials = mw.mainMaterials || mw.pendingMaterials || "";
+    }
+
+    if (tl) {
+      p.timeline = tl;
+      p.a0Source = tl.source || p.a0Source || "";
+      p.sapChangeCount = tl.sapChangeCount;
+      p.cpmChangeCount = tl.cpmChangeCount;
+    }
+
+    return p;
+  });
+}
+
+function isC3WaitingProject(p) {
+  const userStatus = String(p.userStatus || p.stage || "").toUpperCase();
+  return p.isC3Waiting === true || userStatus === "C3" || !!getMaterialWaitingForWbs(p.wbs);
+}
+
+function getMaterialWaitingForWbs(wbs) {
+  const key = normalizeKey(wbs);
+  return materialWaiting.find(function (m) {
+    return normalizeKey(m.wbs) === key;
+  }) || null;
+}
+
+function getTimelineForWbs(wbs) {
+  const key = normalizeKey(wbs);
+  return projectTimeline.find(function (m) {
+    return normalizeKey(m.wbs) === key;
+  }) || null;
+}
+
+function getC3MaxWaitingDays(projects) {
+  const values = projects
+    .filter(isC3WaitingProject)
+    .map(function (p) {
+      const mw = getMaterialWaitingForWbs(p.wbs);
+      return Number((mw && mw.waitingDays) || p.c3WaitingDays || 0);
+    });
+
+  return values.length ? Math.max.apply(null, values) : 0;
+}
+
+function getMaterialWaitingTotalValue() {
+  return materialWaiting.reduce(function (sum, m) {
+    return sum + Number(m.pendingValue || 0);
+  }, 0);
+}
+
+function safeValueRaw(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
+
+function numberOrBlank(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const n = Number(String(value).replace(/,/g, "").replace(/บาท/g, "").trim());
+  return Number.isNaN(n) ? value : n;
+}
+
+
 function renderKpi(data) {
   const kpiGrid = document.getElementById("kpiGrid");
   if (!kpiGrid) return;
@@ -420,6 +686,7 @@ function renderKpi(data) {
     { key: "materialIssue", title: "ติดพัสดุ", value: data.materialIssue || 0, sub: "Material Issue", icon: "📦", tone: "orange" },
     { key: "costIssue", title: "ติดค่าใช้จ่าย", value: data.costIssue || 0, sub: "Cost Issue", icon: "💰", tone: "yellow" },
     { key: "timeIssue", title: "ติด Time", value: data.timeIssue || 0, sub: "Time Issue", icon: "🕘", tone: "blue" },
+    { key: "c3Waiting", title: "C3 รอพัสดุ", value: data.c3Waiting || 0, sub: "Material Waiting", icon: "📦", tone: "c3" },
     { key: "rel", title: "REL", value: data.rel || 0, sub: "Released", icon: "📋", tone: "purple" },
     { key: "teco", title: "TECO", value: data.teco || 0, sub: "Technically Complete", icon: "☑️", tone: "cyan" },
     { key: "clsd", title: "CLSD", value: data.clsd || 0, sub: "Closed Status", icon: "🔐", tone: "green" }
@@ -485,6 +752,11 @@ function applyDashboardFilter(type) {
     case "timeIssue":
       filterTitle = "ติด Time";
       filtered = allProjects.filter(hasTimeIssue);
+      break;
+
+    case "c3Waiting":
+      filterTitle = "C3 รอพัสดุ";
+      filtered = allProjects.filter(isC3WaitingProject);
       break;
 
     case "rel":
@@ -1144,12 +1416,72 @@ function renderProjectDetailShell(project) {
       <p>${escapeHtml(project.action || "-")}</p>
     </div>
 
+    ${renderProjectTimelineSummary(project)}
+    ${renderMaterialWaitingSummary(project)}
+
     ${renderLazyDetailPlaceholder("cost", "Cost Detail")}
     ${renderLazyDetailPlaceholder("material", "Material Pending")}
     ${renderLazyDetailPlaceholder("document", "Document Checklist")}
     ${renderLazyDetailPlaceholder("time", "Time Detail")}
   `;
 }
+
+
+function renderProjectTimelineSummary(project) {
+  const timeline = project.timeline || getTimelineForWbs(project.wbs);
+  if (!timeline && !project.a0Source && project.sapChangeCount === undefined && project.cpmChangeCount === undefined) {
+    return "";
+  }
+
+  return `
+    <div class="detail-section card">
+      <h3>Project Timeline / Workflow</h3>
+      <div class="timeline-summary-grid">
+        ${timelineDetailChip("A0 Source", project.a0Source || (timeline && timeline.source) || "-")}
+        ${timelineDetailChip("SAP Change", safeValue((timeline && timeline.sapChangeCount) ?? project.sapChangeCount ?? 0) + " ครั้ง")}
+        ${timelineDetailChip("CPM Change", safeValue((timeline && timeline.cpmChangeCount) ?? project.cpmChangeCount ?? 0) + " ครั้ง")}
+        ${timelineDetailChip("Stage ปัจจุบัน", project.userStatus || (timeline && timeline.userStatus) || "-")}
+      </div>
+    </div>
+  `;
+}
+
+function renderMaterialWaitingSummary(project) {
+  const mw = project.materialWaiting || getMaterialWaitingForWbs(project.wbs);
+  if (!mw) return "";
+
+  const tagText = mw.mainMaterials || mw.pendingMaterials || "";
+  const tags = tagText
+    ? tagText.split(",").map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 18)
+    : [];
+
+  return `
+    <div class="detail-section card">
+      <h3>Material Waiting C3</h3>
+      <div class="timeline-summary-grid">
+        ${timelineDetailChip("รอพัสดุ", safeValue(mw.waitingDays) + " วัน")}
+        ${timelineDetailChip("จำนวนรายการค้าง", safeValue(mw.pendingCount) + " รายการ")}
+        ${timelineDetailChip("มูลค่าค้าง", formatMoney(mw.pendingValue || 0) + " บาท")}
+        ${timelineDetailChip("Priority", mw.priority || "-")}
+      </div>
+      <div class="material-tags">
+        ${tags.length ? tags.map(function (t) {
+          return `<span class="material-tag">${escapeHtml(t)}</span>`;
+        }).join("") : `<span class="material-tag">ไม่มีรายการพัสดุหลัก</span>`}
+      </div>
+    </div>
+  `;
+}
+
+function timelineDetailChip(label, value) {
+  return `
+    <div class="timeline-chip">
+      <div class="timeline-chip-label">${escapeHtml(label)}</div>
+      <div class="timeline-chip-value">${escapeHtml(value)}</div>
+    </div>
+  `;
+}
+
 
 function renderLazyDetailPlaceholder(part, title) {
   return `
@@ -1585,6 +1917,18 @@ function localAssistant(text) {
 
   if (byOwner.length) return ownerSummaryText(byOwner);
 
+  if (q.includes("c3") || q.includes("รอพัสดุ") || q.includes("หยุดงานรอพัสดุ")) {
+    const list = allProjects.filter(isC3WaitingProject);
+
+    return "งาน C3 รอพัสดุ " + list.length + " งาน\n" +
+      list.slice(0, 10).map(function (p, i) {
+        const mw = getMaterialWaitingForWbs(p.wbs);
+        return (i + 1) + ") " + p.wbs +
+          " / รอ " + safeValue((mw && mw.waitingDays) || p.c3WaitingDays) + " วัน" +
+          " / " + safeValue((mw && mw.mainMaterials) || p.c3MainMaterials || "");
+      }).join("\n");
+  }
+
   if (q.includes("ติดพัสดุ")) {
     const list = allProjects.filter(hasMaterialIssue);
 
@@ -1649,6 +1993,7 @@ Time: ${formatPercent(p.timePercent)} / ${p.timeStatus || "-"}
 
 ปัญหาหลัก: ${p.mainIssue || "-"}
 Priority: ${p.priority || "-"}
+${isC3WaitingProject(p) ? "\nC3 รอพัสดุ: " + safeValue((getMaterialWaitingForWbs(p.wbs) || {}).waitingDays || p.c3WaitingDays) + " วัน" : ""}
   `.trim();
 }
 
