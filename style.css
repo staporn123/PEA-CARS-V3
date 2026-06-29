@@ -1151,3 +1151,247 @@ td.text-wrap {
   margin-top: 8px;
   color: #94a3b8;
 }
+
+
+/* =========================================================
+   PEA CARS+ V4 C3 / Material Waiting / Timeline Add-on
+   เพิ่มเฉพาะส่วนเสริม ไม่กระทบโครงสร้างเดิม
+========================================================= */
+
+/* Last Data Update */
+.last-update,
+#lastUpdate {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 13px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 999px;
+  color: #dbeafe;
+  background: rgba(2, 6, 23, 0.62);
+  font-size: 13px;
+  font-weight: 850;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.06);
+}
+
+.last-update::before,
+#lastUpdate::before {
+  content: "🕘";
+}
+
+/* C3 KPI Emphasis */
+.kpi-c3,
+.kpi-material-waiting {
+  border-color: rgba(251, 146, 60, 0.42) !important;
+  background:
+    radial-gradient(circle at 88% 0%, rgba(251, 146, 60, 0.28), transparent 34%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(10, 18, 34, 0.96)) !important;
+}
+
+.kpi-c3::after,
+.kpi-material-waiting::after {
+  background: #fb923c !important;
+  opacity: 0.42;
+}
+
+/* Dashboard Filter Active for C3 */
+.kpi-card[data-filter="c3Waiting"].active-filter,
+.kpi-card[data-filter="materialWaiting"].active-filter {
+  border-color: rgba(251, 146, 60, 0.95) !important;
+  box-shadow:
+    0 0 0 3px rgba(251, 146, 60, 0.18),
+    0 18px 45px rgba(251, 146, 60, 0.28) !important;
+}
+
+/* Material Waiting Summary */
+.material-waiting-card,
+.timeline-card {
+  border-color: rgba(251, 146, 60, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(251, 146, 60, 0.12), transparent 36%),
+    rgba(15, 23, 42, 0.9);
+}
+
+.material-summary-grid,
+.timeline-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(145px, 1fr));
+  gap: 12px;
+  margin: 12px 0 14px;
+}
+
+.material-summary-item,
+.timeline-summary-item {
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.62);
+}
+
+.material-summary-label,
+.timeline-summary-label {
+  margin-bottom: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.material-summary-value,
+.timeline-summary-value {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+/* Material Tags */
+.material-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.material-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid rgba(251, 146, 60, 0.34);
+  border-radius: 999px;
+  color: #fed7aa;
+  background: rgba(251, 146, 60, 0.12);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.material-tag.critical {
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.42);
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.material-list-preview {
+  color: #dbeafe;
+  line-height: 1.65;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Timeline Stage */
+.timeline-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.timeline-stage-pill {
+  padding: 8px 10px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 999px;
+  color: #bfdbfe;
+  background: rgba(30, 64, 175, 0.16);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.timeline-stage-pill.active {
+  color: #ffffff;
+  border-color: rgba(251, 146, 60, 0.72);
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.34), rgba(239, 68, 68, 0.22));
+  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.08);
+}
+
+.timeline-stage-pill.done {
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.34);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+/* Workflow Source */
+.workflow-source-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.workflow-source-card {
+  padding: 13px;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.58);
+}
+
+.workflow-source-label {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.workflow-source-value {
+  margin-top: 6px;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+/* Priority for C3 / Material */
+.priority-critical {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.38);
+}
+
+.priority-high {
+  color: #fed7aa;
+  background: rgba(251, 146, 60, 0.16);
+  border-color: rgba(251, 146, 60, 0.38);
+}
+
+.priority-medium {
+  color: #fde68a;
+  background: rgba(250, 204, 21, 0.14);
+  border-color: rgba(250, 204, 21, 0.34);
+}
+
+.priority-low {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.34);
+}
+
+/* Better wrap for long material summaries */
+td.material-summary-cell,
+td.timeline-summary-cell {
+  white-space: normal;
+  min-width: 320px;
+  max-width: 680px;
+  line-height: 1.55;
+}
+
+/* Responsive Add-on */
+@media (max-width: 1000px) {
+  .material-summary-grid,
+  .timeline-summary-grid,
+  .workflow-source-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .material-summary-grid,
+  .timeline-summary-grid,
+  .workflow-source-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .last-update,
+  #lastUpdate {
+    width: 100%;
+    justify-content: center;
+  }
+}
