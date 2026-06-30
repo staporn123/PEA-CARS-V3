@@ -529,12 +529,13 @@ function normalizeMaterialWaitingRows(rows) {
         province: safeValueRaw(r[3]),
         status: safeValueRaw(r[4]),
         waitingDays: numberOrBlank(r[5]),
-        pendingCount: numberOrBlank(r[6]),
-        pendingValue: numberOrBlank(r[7]),
-        pendingMaterials: safeValueRaw(r[8]),
-        priority: safeValueRaw(r[9]),
-        remark: safeValueRaw(r[10]),
-        mainMaterials: safeValueRaw(r[11])
+        totalItems: numberOrBlank(r[6]),
+        pendingCount: numberOrBlank(r[7]),
+        pendingValue: numberOrBlank(r[8]),
+        pendingMaterials: safeValueRaw(r[9]),
+        priority: safeValueRaw(r[10]),
+        remark: safeValueRaw(r[11]),
+        mainMaterials: safeValueRaw(r[12])
       };
     }
 
@@ -545,7 +546,8 @@ function normalizeMaterialWaitingRows(rows) {
       province: safeValueRaw(r.province || r["จังหวัด"]),
       status: safeValueRaw(r.status || r.currentStatus || r["สถานะ"]),
       waitingDays: numberOrBlank(r.waitingDays || r.materialWaitingDays || r["รอพัสดุ (วัน)"] || r["รอพัสดุ"]),
-      pendingCount: numberOrBlank(r.pendingCount || r.pendingItems || r["จำนวนรายการค้าง"]),
+      totalItems: numberOrBlank(r.totalItems || r.materialTotalItems || r["จำนวนรายการทั้งหมด"] || r["รายการทั้งหมด"]),
+      pendingCount: numberOrBlank(r.pendingCount || r.pendingItems || r["จำนวนรายการค้างจริง"] || r["จำนวนรายการค้าง"]),
       pendingValue: numberOrBlank(r.pendingValue || r.pendingAmount || r["มูลค่าค้าง"]),
       pendingMaterials: safeValueRaw(r.pendingMaterials || r.allPendingMaterials || r["รายการพัสดุค้างทั้งหมด"]),
       priority: safeValueRaw(r.priority || r.Priority),
@@ -612,6 +614,7 @@ function enrichProjectsWithC3Info() {
       p.materialWaiting = mw;
       p.isC3Waiting = true;
       p.c3WaitingDays = mw.waitingDays;
+      p.c3TotalItems = mw.totalItems;
       p.c3PendingCount = mw.pendingCount;
       p.c3PendingValue = mw.pendingValue;
       p.c3MainMaterials = mw.mainMaterials || mw.pendingMaterials || "";
@@ -619,7 +622,7 @@ function enrichProjectsWithC3Info() {
 
     if (tl) {
       p.timeline = tl;
-      p.a0Source = tl.source || p.a0Source || "";
+      p.a0Source = normalizeWorkflowSource(tl.a0Source, tl.source || p.a0Source || "");
       p.sapChangeCount = tl.sapChangeCount;
       p.cpmChangeCount = tl.cpmChangeCount;
     }
@@ -673,6 +676,31 @@ function numberOrBlank(value) {
   if (value === null || value === undefined || value === "") return "";
   const n = Number(String(value).replace(/,/g, "").replace(/บาท/g, "").trim());
   return Number.isNaN(n) ? value : n;
+}
+
+function isWorkflowSourceValue(value) {
+  const s = String(value || "").trim().toUpperCase();
+  return s === "SAP" || s === "CPM" || s === "SAP+CPM" || s === "SAP / CPM";
+}
+
+function normalizeWorkflowSource(primary, fallback) {
+  if (isWorkflowSourceValue(primary)) return String(primary).trim().toUpperCase();
+  if (isWorkflowSourceValue(fallback)) return String(fallback).trim().toUpperCase();
+
+  const p = String(primary || "");
+  const f = String(fallback || "");
+
+  // กันกรณี Code.gs ดึงคอลัมน์ A0 วันที่มาใส่ A0 Source ผิด
+  if (p.includes("GMT") || p.includes("Jan") || p.includes("/")) {
+    return isWorkflowSourceValue(f) ? String(f).trim().toUpperCase() : "-";
+  }
+
+  return primary || fallback || "-";
+}
+
+function getMaterialWaitingDaysForWbs(wbs) {
+  const mw = getMaterialWaitingForWbs(wbs) || (selectedProject && selectedProject.materialWaiting) || null;
+  return mw ? (mw.waitingDays || mw.materialWaitingDays || 0) : 0;
 }
 
 
@@ -1450,7 +1478,7 @@ function renderProjectTimelineSummary(project) {
     <div class="detail-section card">
       <h3>Project Timeline / Workflow</h3>
       <div class="timeline-summary-grid">
-        ${timelineDetailChip("A0 Source", project.a0Source || (timeline && timeline.source) || "-")}
+        ${timelineDetailChip("A0 ผ่านจาก", normalizeWorkflowSource(project.a0Source, timeline && timeline.source))}
         ${timelineDetailChip("SAP Change", safeValue((timeline && timeline.sapChangeCount) ?? project.sapChangeCount ?? 0) + " ครั้ง")}
         ${timelineDetailChip("CPM Change", safeValue((timeline && timeline.cpmChangeCount) ?? project.cpmChangeCount ?? 0) + " ครั้ง")}
         ${timelineDetailChip("Stage ปัจจุบัน", project.userStatus || (timeline && timeline.userStatus) || "-")}
@@ -1472,8 +1500,9 @@ function renderMaterialWaitingSummary(project) {
     <div class="detail-section card">
       <h3>Material Waiting C3</h3>
       <div class="timeline-summary-grid">
-        ${timelineDetailChip("รอพัสดุ", safeValue(mw.waitingDays) + " วัน")}
-        ${timelineDetailChip("จำนวนรายการค้าง", safeValue(mw.pendingCount) + " รายการ")}
+        ${timelineDetailChip("รอพัสดุแล้ว", safeValue(mw.waitingDays) + " วัน")}
+        ${timelineDetailChip("รายการทั้งหมด", safeValue(mw.totalItems || "-") + " รายการ")}
+        ${timelineDetailChip("รายการค้างจริง", safeValue(mw.pendingCount) + " รายการ")}
         ${timelineDetailChip("มูลค่าค้าง", formatMoney(mw.pendingValue || 0) + " บาท")}
         ${timelineDetailChip("Priority", mw.priority || "-")}
       </div>
@@ -1505,7 +1534,7 @@ function applyTimelineDetailToProject(project, data) {
 
   if (tl) {
     project.timeline = tl;
-    project.a0Source = tl.a0Source || tl.source || project.a0Source || "";
+    project.a0Source = normalizeWorkflowSource(tl.a0Source, tl.source || project.a0Source || "");
     project.sapChangeCount = tl.sapChangeCount;
     project.cpmChangeCount = tl.cpmChangeCount;
   }
@@ -1514,6 +1543,7 @@ function applyTimelineDetailToProject(project, data) {
     project.materialWaiting = mw;
     project.isC3Waiting = true;
     project.c3WaitingDays = mw.waitingDays;
+    project.c3TotalItems = mw.totalItems;
     project.c3PendingCount = mw.pendingCount;
     project.c3PendingValue = mw.pendingValue;
     project.c3MainMaterials = mw.mainItems || mw.mainMaterialSummary || mw.mainMaterials || mw.allItems || "";
@@ -1527,13 +1557,14 @@ function renderTimelineDetail(data, project) {
   const tl = data.timeline || project.timeline || getTimelineForWbs(project.wbs) || {};
   const mw = data.materialWaiting || project.materialWaiting || getMaterialWaitingForWbs(project.wbs) || null;
 
-  const a0Source = tl.a0Source || tl.source || project.a0Source || "-";
+  const a0Source = normalizeWorkflowSource(tl.a0Source, tl.source || project.a0Source || "");
   const sapCount = (tl.sapChangeCount !== undefined && tl.sapChangeCount !== "") ? tl.sapChangeCount : (project.sapChangeCount ?? 0);
   const cpmCount = (tl.cpmChangeCount !== undefined && tl.cpmChangeCount !== "") ? tl.cpmChangeCount : (project.cpmChangeCount ?? 0);
   const stageCurrent = tl.currentStage || tl.userStatus || project.userStatus || "-";
   const stageAge = (tl.stageAgeDays !== undefined && tl.stageAgeDays !== "") ? tl.stageAgeDays : "-";
   const projectAge = (tl.projectAgeDays !== undefined && tl.projectAgeDays !== "") ? tl.projectAgeDays : "-";
   const waitingDays = mw ? (mw.waitingDays || tl.materialWaitingDays || project.c3WaitingDays || 0) : (tl.materialWaitingDays || project.c3WaitingDays || 0);
+  const totalItems = mw ? (mw.totalItems || project.c3TotalItems || "-") : (project.c3TotalItems || "-");
   const pendingCount = mw ? (mw.pendingCount || project.c3PendingCount || 0) : (project.c3PendingCount || 0);
   const pendingValue = mw ? (mw.pendingValue || project.c3PendingValue || 0) : (project.c3PendingValue || 0);
   const delayReason = tl.delayReason || (mw ? (mw.remark || "หยุดงานรอพัสดุ") : "-");
@@ -1563,7 +1594,8 @@ function renderTimelineDetail(data, project) {
         ${timelineDetailChip("CPM Change", safeValue(cpmCount) + " ครั้ง")}
         ${timelineDetailChip("ผู้เปลี่ยนล่าสุด", lastUser)}
         ${timelineDetailChip("วันเริ่มต้น", startDate)}
-        ${timelineDetailChip("รายการพัสดุค้าง", safeValue(pendingCount) + " รายการ")}
+        ${timelineDetailChip("รายการทั้งหมด", safeValue(totalItems) + " รายการ")}
+        ${timelineDetailChip("รายการค้างจริง", safeValue(pendingCount) + " รายการ")}
         ${timelineDetailChip("มูลค่าพัสดุค้าง", formatMoney(pendingValue || 0) + " บาท")}
         ${timelineDetailChip("Delay Reason", delayReason)}
       </div>
@@ -1675,6 +1707,10 @@ function renderCostDetail(cost) {
 }
 
 function renderMaterialDetail(material) {
+  const wbs = material.wbs || (selectedProject && selectedProject.wbs) || "";
+  const mw = getMaterialWaitingForWbs(wbs) || (selectedProject && selectedProject.materialWaiting) || null;
+  const waitingDays = mw ? (mw.waitingDays || 0) : getMaterialWaitingDaysForWbs(wbs);
+
   const rows = (material.pendingItems || []).map(function (x) {
     return `
       <tr>
@@ -1683,6 +1719,7 @@ function renderMaterialDetail(material) {
         <td>${escapeHtml(x.requiredQty)}</td>
         <td>${escapeHtml(x.issuedQty)}</td>
         <td>${escapeHtml(x.pendingQty)}</td>
+        <td>${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</td>
         <td>${formatMoney(x.pendingValue)}</td>
       </tr>
     `;
@@ -1693,7 +1730,8 @@ function renderMaterialDetail(material) {
       <h3>Material Pending</h3>
       <p class="muted">
         รายการทั้งหมด ${material.totalItems || 0} รายการ /
-        ค้าง ${material.pendingCount || 0} รายการ /
+        ค้างจริง ${material.pendingCount || 0} รายการ /
+        ค้างมาแล้ว ${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"} /
         มูลค่าค้าง ${formatMoney(material.pendingValue || 0)} บาท
       </p>
       <div class="table-wrap">
@@ -1705,11 +1743,12 @@ function renderMaterialDetail(material) {
               <th>ต้องการ</th>
               <th>เบิกแล้ว</th>
               <th>ค้าง</th>
+              <th>ค้างมาแล้ว</th>
               <th>มูลค่าค้าง</th>
             </tr>
           </thead>
           <tbody>
-            ${rows || `<tr><td colspan="6" class="empty-state">ไม่มีพัสดุค้าง</td></tr>`}
+            ${rows || `<tr><td colspan="7" class="empty-state">ไม่มีพัสดุค้าง</td></tr>`}
           </tbody>
         </table>
       </div>
