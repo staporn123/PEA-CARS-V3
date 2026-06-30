@@ -1711,29 +1711,50 @@ function renderMaterialDetail(material) {
   const mw = getMaterialWaitingForWbs(wbs) || (selectedProject && selectedProject.materialWaiting) || null;
   const waitingDays = mw ? (mw.waitingDays || 0) : getMaterialWaitingDaysForWbs(wbs);
 
-  const rows = (material.pendingItems || []).map(function (x) {
+  const allItems = material.allItems || material.items || [];
+  const pendingList = (material.pendingItems || allItems.filter(function (x) {
+    return Number(x.pendingQty || x.remain || 0) > 0;
+  }));
+
+  window.currentMaterialDetail = material;
+  window.currentMaterialWaitingDays = waitingDays;
+
+  const rows = allItems.map(function (x) {
+    const pendingQty = Number(x.pendingQty || x.remain || 0);
+    const statusText = pendingQty > 0 ? "ค้าง" : "ครบ";
+    const statusClass = pendingQty > 0 ? "material-status pending" : "material-status complete";
+
     return `
-      <tr>
+      <tr class="${pendingQty > 0 ? "row-pending" : "row-complete"}">
         <td>${escapeHtml(x.materialCode)}</td>
         <td class="text-wrap">${escapeHtml(x.materialName)}</td>
         <td>${escapeHtml(x.requiredQty)}</td>
         <td>${escapeHtml(x.issuedQty)}</td>
-        <td>${escapeHtml(x.pendingQty)}</td>
-        <td>${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</td>
+        <td>${escapeHtml(pendingQty)}</td>
+        <td>${pendingQty > 0 && waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</td>
         <td>${formatMoney(x.pendingValue)}</td>
+        <td><span class="${statusClass}">${statusText}</span></td>
       </tr>
     `;
   }).join("");
 
   return `
     <div class="detail-section card" id="detail-part-material">
-      <h3>Material Pending</h3>
-      <p class="muted">
-        รายการทั้งหมด ${material.totalItems || 0} รายการ /
-        ค้างจริง ${material.pendingCount || 0} รายการ /
-        ค้างมาแล้ว ${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"} /
-        มูลค่าค้าง ${formatMoney(material.pendingValue || 0)} บาท
-      </p>
+      <div class="section-title-row">
+        <div>
+          <h3>Material Detail</h3>
+          <p class="muted">
+            รายการพัสดุทั้งหมด ${material.totalItems || allItems.length || 0} รายการ /
+            ค้างจริง ${material.pendingCount || pendingList.length || 0} รายการ /
+            ค้างมาแล้ว ${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"} /
+            มูลค่าค้าง ${formatMoney(material.pendingValue || 0)} บาท
+          </p>
+        </div>
+        <button type="button" class="secondary-action" onclick="openPendingMaterialPopup()">
+          ดูพัสดุค้างจริง ${material.pendingCount || pendingList.length || 0} รายการ
+        </button>
+      </div>
+
       <div class="table-wrap">
         <table>
           <thead>
@@ -1745,15 +1766,82 @@ function renderMaterialDetail(material) {
               <th>ค้าง</th>
               <th>ค้างมาแล้ว</th>
               <th>มูลค่าค้าง</th>
+              <th>สถานะ</th>
             </tr>
           </thead>
           <tbody>
-            ${rows || `<tr><td colspan="7" class="empty-state">ไม่มีพัสดุค้าง</td></tr>`}
+            ${rows || `<tr><td colspan="8" class="empty-state">ไม่พบข้อมูลพัสดุ</td></tr>`}
           </tbody>
         </table>
       </div>
     </div>
   `;
+}
+
+function openPendingMaterialPopup() {
+  const material = window.currentMaterialDetail || {};
+  const waitingDays = window.currentMaterialWaitingDays || 0;
+  const allItems = material.allItems || material.items || [];
+  const pendingList = (material.pendingItems || allItems.filter(function (x) {
+    return Number(x.pendingQty || x.remain || 0) > 0;
+  }));
+
+  const rows = pendingList.map(function (x) {
+    const pendingQty = Number(x.pendingQty || x.remain || 0);
+    return `
+      <tr>
+        <td>${escapeHtml(x.materialCode)}</td>
+        <td class="text-wrap">${escapeHtml(x.materialName)}</td>
+        <td>${escapeHtml(x.requiredQty)}</td>
+        <td>${escapeHtml(x.issuedQty)}</td>
+        <td>${escapeHtml(pendingQty)}</td>
+        <td>${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</td>
+        <td>${formatMoney(x.pendingValue)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const popup = document.createElement("div");
+  popup.id = "pendingMaterialPopup";
+  popup.className = "mini-modal";
+  popup.innerHTML = `
+    <div class="mini-modal-box">
+      <div class="mini-modal-head">
+        <div>
+          <h3>พัสดุค้างจริง</h3>
+          <p class="muted">ค้าง ${pendingList.length} จาก ${material.totalItems || allItems.length || 0} รายการ / ค้างมาแล้ว ${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</p>
+        </div>
+        <button type="button" onclick="closePendingMaterialPopup()">ปิด</button>
+      </div>
+      <div class="mini-modal-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>รหัสพัสดุ</th>
+                <th>รายการพัสดุ</th>
+                <th>ต้องการ</th>
+                <th>เบิกแล้ว</th>
+                <th>ค้าง</th>
+                <th>ค้างมาแล้ว</th>
+                <th>มูลค่าค้าง</th>
+              </tr>
+            </thead>
+            <tbody>${rows || `<tr><td colspan="7" class="empty-state">ไม่มีพัสดุค้างจริง</td></tr>`}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const old = document.getElementById("pendingMaterialPopup");
+  if (old) old.remove();
+  document.body.appendChild(popup);
+}
+
+function closePendingMaterialPopup() {
+  const popup = document.getElementById("pendingMaterialPopup");
+  if (popup) popup.remove();
 }
 
 function renderDocumentDetail(documentDetail) {
@@ -1804,7 +1892,11 @@ function renderDocumentDetail(documentDetail) {
 
       <p class="muted">
         เอกสารทั้งหมด ${documentDetail.total || items.length || 0} รายการ /
-        ยังไม่ครบ ${documentDetail.missing || 0} รายการ
+        เกี่ยวข้อง ${documentDetail.applicableTotal || items.length || 0} รายการ /
+        ไม่เกี่ยวข้อง ${documentDetail.notApplicable || 0} รายการ /
+        ผ่าน ${documentDetail.passCount || 0} รายการ /
+        ยังไม่ครบ ${documentDetail.missing || 0} รายการ /
+        ${documentDetail.documentPercent !== undefined ? "คิดเป็น " + formatPercent(documentDetail.documentPercent) : ""}
       </p>
 
       <div class="table-wrap">
