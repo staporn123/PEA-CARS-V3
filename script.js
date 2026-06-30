@@ -1,4 +1,6 @@
-/* =========================================================
+/*
+ * V5.3 STABLE: Material All + Pending Popup, no Material History click
+ =========================================================
    PEA CARS+ V4 Professional Edition - Turbo V6.2 Stable Filter Logic
    File: script.js
    Copy ทั้งไฟล์นี้ไปวางทับ script.js เดิม
@@ -1664,7 +1666,7 @@ function renderDetailSections(detail) {
   let html = "";
 
   if (detail.cost && detail.cost.items) html += renderCostDetail(detail.cost);
-  if (detail.material && detail.material.pendingItems) html += renderMaterialDetail(detail.material);
+  if (detail.material && (detail.material.items || detail.material.allItems || detail.material.pendingItems)) html += renderMaterialDetail(detail.material);
   if (detail.document && detail.document.items) html += renderDocumentDetail(detail.document);
   if (detail.time) html += renderTimeDetail(detail.time);
   if (detail.timeline) html += renderTimelineDetail(detail.timeline, detail.project);
@@ -1733,14 +1735,7 @@ function renderMaterialDetail(material) {
 
     return `
       <tr class="${pendingQty > 0 ? "row-pending" : "row-complete"}">
-        <td>
-          <button
-            type="button"
-            class="material-code-link"
-            title="คลิกเพื่อดูรายละเอียด/ประวัติพัสดุ"
-            onclick="openMaterialItemDetailPopup('${escapeAttr(wbs)}','${escapeAttr(materialCode)}','${escapeAttr(network)}')"
-          >${escapeHtml(materialCode)}</button>
-        </td>
+        <td><span class="material-code-text">${escapeHtml(materialCode)}</span></td>
         <td class="text-wrap">${escapeHtml(materialName)}</td>
         <td>${escapeHtml(x.requiredQty)}</td>
         <td>${escapeHtml(x.issuedQty)}</td>
@@ -1821,14 +1816,7 @@ function openPendingMaterialPopup() {
     const network = safeValue(x.network);
     return `
       <tr>
-        <td>
-          <button
-            type="button"
-            class="material-code-link"
-            title="คลิกเพื่อดูรายละเอียด/ประวัติพัสดุ"
-            onclick="openMaterialItemDetailPopup('${escapeAttr(wbs)}','${escapeAttr(materialCode)}','${escapeAttr(network)}')"
-          >${escapeHtml(materialCode)}</button>
-        </td>
+        <td><span class="material-code-text">${escapeHtml(materialCode)}</span></td>
         <td class="text-wrap">${escapeHtml(materialName)}</td>
         <td>${escapeHtml(x.requiredQty)}</td>
         <td>${escapeHtml(x.issuedQty)}</td>
@@ -1882,110 +1870,10 @@ function closePendingMaterialPopup() {
   if (popup) popup.remove();
 }
 
-async function openMaterialItemDetailPopup(wbs, materialCode, network) {
-  const old = document.getElementById("materialItemDetailPopup");
-  if (old) old.remove();
-
-  const popup = document.createElement("div");
-  popup.id = "materialItemDetailPopup";
-  popup.className = "mini-modal";
-  popup.innerHTML = `
-    <div class="mini-modal-box material-item-box">
-      <div class="mini-modal-head">
-        <div>
-          <h3>รายละเอียดพัสดุ</h3>
-          <p class="muted">${escapeHtml(materialCode)} / ${escapeHtml(wbs)}</p>
-        </div>
-        <button type="button" onclick="closeMaterialItemDetailPopup()">ปิด</button>
-      </div>
-      <div class="mini-modal-body">
-        <div class="empty-state">กำลังโหลดประวัติพัสดุ...</div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(popup);
-
-  try {
-    const data = await apiAction("materialhistory", {
-      wbs: wbs,
-      materialCode: materialCode,
-      network: network || ""
-    });
-    renderMaterialItemHistoryPopup(data, wbs, materialCode, network);
-  } catch (err) {
-    const body = popup.querySelector(".mini-modal-body");
-    if (body) {
-      body.innerHTML = `<div class="empty-state error-text">โหลดประวัติพัสดุไม่สำเร็จ<br>${escapeHtml(err.message)}</div>`;
-    }
-  }
-}
-
-function renderMaterialItemHistoryPopup(data, wbs, materialCode, network) {
-  const popup = document.getElementById("materialItemDetailPopup");
-  if (!popup) return;
-
-  const item = data && data.item ? data.item : null;
-  const history = data && Array.isArray(data.history) ? data.history : [];
-  const materialName = item ? getMaterialDisplayName(item) : "-";
-
-  const historyRows = history.map(function (h) {
-    return `
-      <tr>
-        <td>${escapeHtml(h.timestampDisplay || "-")}</td>
-        <td>${escapeHtml(h.batchId || "-")}</td>
-        <td>${escapeHtml(h.changeType || "-")}</td>
-        <td>${escapeHtml(safeValue(h.oldRequired))} → ${escapeHtml(safeValue(h.newRequired))}</td>
-        <td>${escapeHtml(safeValue(h.oldIssued))} → ${escapeHtml(safeValue(h.newIssued))}</td>
-        <td>${escapeHtml(safeValue(h.oldPending))} → ${escapeHtml(safeValue(h.newPending))}</td>
-        <td>${escapeHtml(h.sapStatus || "-")}</td>
-        <td class="text-wrap">${escapeHtml(h.remark || "-")}</td>
-      </tr>
-    `;
-  }).join("");
-
-  const body = popup.querySelector(".mini-modal-body");
-  if (!body) return;
-
-  body.innerHTML = `
-    <div class="material-item-summary">
-      <div class="detail-grid">
-        ${detailItem("รหัสพัสดุ", item ? item.materialCode : materialCode)}
-        ${detailItem("ชื่อพัสดุ", materialName)}
-        ${detailItem("Network", item ? item.network : network)}
-        ${detailItem("กลุ่มพัสดุ", item ? item.materialGroup : "-")}
-        ${detailItem("ต้องการ", item ? item.requiredQty : "-")}
-        ${detailItem("เบิกแล้ว", item ? item.issuedQty : "-")}
-        ${detailItem("ค้าง", item ? item.pendingQty : "-")}
-        ${detailItem("มูลค่าค้าง", item ? formatMoney(item.pendingValue || 0) + " บาท" : "-")}
-        ${detailItem("พบครั้งแรก", item ? item.firstImport : "-")}
-        ${detailItem("อัปเดตล่าสุด", item ? item.lastUpdate : "-")}
-        ${detailItem("Batch ล่าสุด", item ? item.lastBatch : "-")}
-        ${detailItem("สถานะ SAP", item ? item.sapStatus : "-")}
-      </div>
-    </div>
-
-    <div class="detail-section card material-history-card">
-      <h3>ประวัติการเปลี่ยนแปลงพัสดุ</h3>
-      <p class="muted">แสดงจาก MATERIAL_CHANGE_LOG จำนวน ${history.length} รายการ</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>วันที่</th>
-              <th>Batch</th>
-              <th>ประเภท</th>
-              <th>ต้องการ</th>
-              <th>เบิกแล้ว</th>
-              <th>ค้าง</th>
-              <th>SAP</th>
-              <th>หมายเหตุ</th>
-            </tr>
-          </thead>
-          <tbody>${historyRows || `<tr><td colspan="8" class="empty-state">ยังไม่มีประวัติการเปลี่ยนแปลง</td></tr>`}</tbody>
-        </table>
-      </div>
-    </div>
-  `;
+// V5.3 STABLE: ยกเลิก Material History รายพัสดุชั่วคราว
+// คงไว้เฉพาะ Material Detail = รายการทั้งหมด + ปุ่มดูเฉพาะรายการค้างจริง
+function openMaterialItemDetailPopup(wbs, materialCode, network) {
+  return false;
 }
 
 function closeMaterialItemDetailPopup() {
