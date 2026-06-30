@@ -1607,3 +1607,10 @@ td.timeline-summary-cell {
 .row-pending td {
   background: rgba(127, 29, 29, 0.10);
 }
+
+/* V5.3 STABLE: material code is display-only (no history popup) */
+.material-code-text {
+  font-weight: 800;
+  color: #dbeafe;
+  white-space: nowrap;
+}
