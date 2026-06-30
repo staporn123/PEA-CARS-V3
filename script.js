@@ -1713,14 +1713,26 @@ function renderMaterialDetail(material) {
   const mw = getMaterialWaitingForWbs(wbs) || (selectedProject && selectedProject.materialWaiting) || null;
   const waitingDays = mw ? (mw.waitingDays || 0) : getMaterialWaitingDaysForWbs(wbs);
 
-  const allItems = material.allItems || material.items || [];
-  const pendingList = (material.pendingItems || allItems.filter(function (x) {
-    return Number(x.pendingQty || x.remain || 0) > 0;
-  }));
+  // V5.3.1 STABLE: ตารางหลักต้องแสดง "รายการพัสดุทั้งหมด" เสมอ
+  // ใช้ allItems/items จาก Backend เป็นหลัก และคำนวณจำนวนเบิกครบจากข้อมูลจริง ไม่ใช้ค่า completeCount เก่าจาก Cache
+  const allItemsRaw = Array.isArray(material.allItems) && material.allItems.length
+    ? material.allItems
+    : (Array.isArray(material.items) ? material.items : []);
+
+  const allItems = allItemsRaw;
+  const pendingList = Array.isArray(material.pendingItems) && material.pendingItems.length
+    ? material.pendingItems
+    : allItems.filter(function (x) {
+        return Number(x.pendingQty || x.remain || 0) > 0;
+      });
 
   const pendingQtyTotal = pendingList.reduce(function (sum, x) {
     return sum + Number(x.pendingQty || x.remain || 0);
   }, 0);
+
+  const computedTotalItems = allItems.length || Number(material.totalItems || 0);
+  const computedPendingCount = pendingList.length || Number(material.pendingCount || 0);
+  const computedCompleteCount = Math.max((allItems.length ? allItems.length : computedTotalItems) - computedPendingCount, 0);
 
   window.currentMaterialDetail = material;
   window.currentMaterialWaitingDays = waitingDays;
@@ -1753,16 +1765,16 @@ function renderMaterialDetail(material) {
         <div>
           <h3>Material Detail</h3>
           <p class="muted">
-            รายการพัสดุทั้งหมด ${material.totalItems || allItems.length || 0} รายการ /
-            เบิกครบ ${(material.completeCount !== undefined ? material.completeCount : (allItems.length - pendingList.length)) || 0} รายการ /
-            ค้างจริง ${material.pendingCount || pendingList.length || 0} รายการ /
+            รายการพัสดุทั้งหมด ${computedTotalItems} รายการ /
+            เบิกครบ ${computedCompleteCount} รายการ /
+            ค้างจริง ${computedPendingCount} รายการ /
             จำนวนค้างรวม ${pendingQtyTotal} ชิ้น /
             ค้างมาแล้ว ${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"} /
             มูลค่าค้าง ${formatMoney(material.pendingValue || 0)} บาท
           </p>
         </div>
         <button type="button" class="secondary-action" onclick="openPendingMaterialPopup()">
-          ดูพัสดุค้างจริง ${material.pendingCount || pendingList.length || 0} รายการ
+          ดูพัสดุค้างจริง ${computedPendingCount} รายการ
         </button>
       </div>
 
