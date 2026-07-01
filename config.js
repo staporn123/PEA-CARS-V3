@@ -7,15 +7,15 @@ const CONFIG = {
   // =========================================
   // Google Apps Script API URL
   // =========================================
-  API_URL: "https://script.google.com/macros/s/AKfycbzrZP1HUOiUfO1z7wmX2xHJgGxIAo3fnUWQnCmaYczoezTC7BWYtrxP5zmM9tj3Bn36/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbxKiIDDruUVjVORiwOBheXqFDgavg-JkPQl-qy6uovUR8-hzK5uH-torNvY-oibL7u5/exec",
 
   API_TIMEOUT: 60000,
 
   // =========================================
   // Application Information
   // =========================================
-  APP_NAME: "PEA CARS+ V4 Professional",
-  VERSION: "4.0.0",
+  APP_NAME: "PEA CARS+ V5.3.4 AI Assistant",
+  VERSION: "5.3.4",
   COMPANY: "Provincial Electricity Authority",
   AUTHOR: "PEA NE1",
   TIMEZONE: "Asia/Bangkok",
@@ -69,6 +69,7 @@ const CONFIG = {
   // =========================================
   AI_ENABLED: true,
   AI_NAME: "PEA CARS+ Assistant",
+  AI_ACTION: "assistant",
 
   // =========================================
   // Debug Mode
