@@ -122,14 +122,17 @@ class CarsAPI {
     return this.request("exportpdf", { wbs });
   }
 
+
+
+  static analyzeProjectAI(wbs) {
+    return this.request("assistant", { wbs });
+  }
+
   static ping() {
     return this.request("ping");
   }
-   static ping() {
-  return this.request("ping");
-}
 
-static saveChecklist(items) {
+  static saveChecklist(items) {
   return this.request("savechecklist", {
     items: JSON.stringify(items)
   });
