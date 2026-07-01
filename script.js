@@ -1,5 +1,5 @@
 /*
- * V5.3 STABLE: Material All + Pending Popup, no Material History click
+ * V5.3.4 FRONTEND AI: Material All + Pending Popup + AI Button
  =========================================================
    PEA CARS+ V4 Professional Edition - Turbo V6.2 Stable Filter Logic
    File: script.js
@@ -18,6 +18,8 @@ let issueChart = null;
 let selectedProject = null;
 let activeDashboardFilter = "all";
 const detailCache = new Map();
+let assistantBusy = false;
+let projectAiBusy = false;
 
 document.addEventListener("DOMContentLoaded", function () {
   injectDashboardFilterStyle();
@@ -129,7 +131,7 @@ function clearAssistantChat() {
   box.innerHTML = `
     <div class="bot-msg">
       สวัสดีครับ ผมคือ PEA CARS+ Assistant<br>
-      พิมพ์ WBS, ชื่อผู้รับผิดชอบ, "ติดเอกสาร", "ติดพัสดุ", "ติดค่าใช้จ่าย", "ติด Time" หรือ "พร้อมปิด" ได้เลยครับ
+      พิมพ์ WBS เพื่อให้ AI วิเคราะห์งานจริงจาก Backend หรือพิมพ์ "ติดเอกสาร", "ติดพัสดุ", "ติดค่าใช้จ่าย", "ติด Time" หรือ "พร้อมปิด" ได้เลยครับ
     </div>
   `;
 }
@@ -1458,6 +1460,8 @@ function renderProjectDetailShell(project) {
       <p>${escapeHtml(project.action || "-")}</p>
     </div>
 
+    ${renderProjectAiPanel(project.wbs)}
+
     ${renderProjectTimelineSummary(project)}
     ${renderMaterialWaitingSummary(project)}
 
@@ -1657,6 +1661,8 @@ function renderProjectDetail(project, detail) {
       <h3>Recommended Action</h3>
       <p>${escapeHtml(project.action || "-")}</p>
     </div>
+
+    ${renderProjectAiPanel(project.wbs)}
 
     ${renderDetailSections(detail)}
   `;
@@ -2111,6 +2117,165 @@ function closeModal() {
   if (modal) modal.classList.add("hidden");
 }
 
+
+/* =========================
+   Project AI Analysis Panel
+========================= */
+
+function renderProjectAiPanel(wbs) {
+  const safeWbs = escapeAttr(wbs || "");
+
+  return `
+    <div class="detail-section card ai-analysis-card" id="detail-part-ai">
+      <div class="section-title-row ai-title-row">
+        <div>
+          <h3>AI วิเคราะห์งาน</h3>
+          <p class="muted">กดปุ่มเพื่อให้ Gemini วิเคราะห์จากข้อมูลจริงของ WBS นี้ โดยใช้ Backend Decision จาก Code.gs</p>
+        </div>
+        <button type="button" class="secondary-action ai-action-btn" onclick="analyzeProjectFromModal('${safeWbs}')">
+          ✨ วิเคราะห์ด้วย AI
+        </button>
+      </div>
+
+      <div class="ai-status-row">
+        <span class="ai-chip">Backend AI</span>
+        <span class="ai-chip">Gemini 2.5 Flash</span>
+        <span class="ai-chip">WBS: ${escapeHtml(wbs || "-")}</span>
+      </div>
+
+      <div id="projectAiResult" class="ai-result-box muted">
+        ยังไม่ได้วิเคราะห์ กดปุ่ม “วิเคราะห์ด้วย AI” เพื่อดูสรุปสถานะ สาเหตุ และสิ่งที่ควรดำเนินการต่อ
+      </div>
+    </div>
+  `;
+}
+
+async function analyzeProjectFromModal(wbs) {
+  const resultBox = document.getElementById("projectAiResult");
+  const btn = document.querySelector(".ai-action-btn");
+
+  if (!wbs) {
+    alert("ไม่พบ WBS สำหรับวิเคราะห์");
+    return;
+  }
+
+  if (projectAiBusy) return;
+  projectAiBusy = true;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "กำลังวิเคราะห์...";
+  }
+
+  if (resultBox) {
+    resultBox.classList.remove("ai-error");
+    resultBox.classList.add("ai-loading");
+    resultBox.innerHTML = `
+      <div class="ai-loading-line">⏳ กำลังส่งข้อมูล WBS ${escapeHtml(wbs)} ให้ AI วิเคราะห์...</div>
+      <div class="muted">โดยใช้ข้อมูล Cost / Material / Document / Time / Timeline จาก Backend</div>
+    `;
+  }
+
+  try {
+    const raw = await apiAction(getAssistantActionName_(), { wbs: wbs });
+    const data = unwrapObject(raw);
+
+    if (!data || data.success === false) {
+      throw new Error((data && data.message) || "AI วิเคราะห์ไม่สำเร็จ");
+    }
+
+    if (resultBox) {
+      resultBox.classList.remove("ai-loading");
+      resultBox.innerHTML = renderProjectAiResult(data);
+    }
+  } catch (err) {
+    console.error("AI วิเคราะห์งานไม่สำเร็จ", err);
+    if (resultBox) {
+      resultBox.classList.remove("ai-loading");
+      resultBox.classList.add("ai-error");
+      resultBox.innerHTML = `
+        <strong>AI วิเคราะห์ไม่สำเร็จ</strong><br>
+        ${escapeHtml(err.message || err)}<br>
+        <span class="muted">ตรวจสอบว่า Code.gs มี action assistant และตั้งค่า GEMINI_API_KEY แล้ว</span>
+      `;
+    }
+  } finally {
+    projectAiBusy = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "✨ วิเคราะห์ด้วย AI";
+    }
+  }
+}
+
+function renderProjectAiResult(data) {
+  const flags = data.statusFlags || {};
+  const flagItems = [
+    ["ปิดงาน", flags.isClosedWork],
+    ["ค่าใช้จ่าย", flags.isCostPass],
+    ["เอกสาร", flags.isDocumentPass],
+    ["พัสดุ", flags.isMaterialPass],
+    ["เวลา", flags.isTimePass]
+  ];
+
+  return `
+    <div class="ai-decision-row">
+      <span class="ai-decision-label">Backend Decision</span>
+      <span class="ai-decision-value ${getAiDecisionClass(data.backendDecision)}">
+        ${escapeHtml(data.backendDecision || "-")}
+      </span>
+      <span class="ai-updated">${escapeHtml(formatDateTimeDisplay(data.updatedAt))}</span>
+    </div>
+
+    <div class="ai-flag-grid">
+      ${flagItems.map(function (item) {
+        return `
+          <span class="ai-flag ${item[1] ? "pass" : "fail"}">
+            ${item[1] ? "✅" : "⚠️"} ${escapeHtml(item[0])}
+          </span>
+        `;
+      }).join("")}
+    </div>
+
+    <div class="ai-answer-text">${formatAiAnswer(data.result || "AI ไม่ส่งคำตอบกลับมา")}</div>
+  `;
+}
+
+function getAssistantActionName_() {
+  if (typeof CONFIG !== "undefined" && CONFIG.AI_ACTION) return CONFIG.AI_ACTION;
+  return "assistant";
+}
+
+function getAiDecisionClass(decision) {
+  const s = String(decision || "").toLowerCase();
+  if (s.includes("ยังไม่พร้อม")) return "fail";
+  if (s.includes("ปิดแล้ว") || s.includes("พร้อมปิด") || s === "พร้อม") return "pass";
+  return "warn";
+}
+
+function formatAiAnswer(text) {
+  return escapeHtml(text || "")
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>");
+}
+
+function formatDateTimeDisplay(value) {
+  if (!value) return "";
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString("th-TH", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  } catch (err) {
+    return String(value);
+  }
+}
+
 /* =========================
    Export
 ========================= */
@@ -2147,18 +2312,43 @@ async function exportProjectPdf(wbs) {
    AI Assistant
 ========================= */
 
-function askAssistant() {
+async function askAssistant() {
   const input = document.getElementById("assistantInput");
   if (!input) return;
 
   const text = input.value.trim();
-  if (!text) return;
+  if (!text || assistantBusy) return;
 
   addChatMessage("user", text);
   input.value = "";
 
-  const answer = localAssistant(text);
+  const wbs = extractWbsFromText(text);
 
+  // ถ้าคำถามมี WBS ให้เรียก Backend AI จริงก่อน
+  if (wbs) {
+    assistantBusy = true;
+    addChatMessage("bot", "⏳ กำลังวิเคราะห์ WBS " + wbs + " ด้วย AI จาก Backend...");
+
+    try {
+      const raw = await apiAction(getAssistantActionName_(), { wbs: wbs });
+      const data = unwrapObject(raw);
+      const answer = buildAssistantBackendAnswer(data);
+      replaceLastBotMessage(answer);
+    } catch (err) {
+      console.error("Assistant backend AI failed", err);
+      replaceLastBotMessage(
+        "AI Backend วิเคราะห์ไม่สำเร็จ: " + (err.message || err) +
+        "\n\nระบบจะแสดงสรุปแบบ Local ให้แทน:\n" +
+        localAssistant(text)
+      );
+    } finally {
+      assistantBusy = false;
+    }
+    return;
+  }
+
+  // ถ้าไม่มี WBS ใช้ Local Assistant เดิม เพื่อไม่ให้ฟีเจอร์เดิมพัง
+  const answer = localAssistant(text);
   setTimeout(function () {
     addChatMessage("bot", answer);
   }, 250);
@@ -2174,6 +2364,61 @@ function addChatMessage(type, text) {
 
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
+}
+
+
+function replaceLastBotMessage(text) {
+  const box = document.getElementById("chatBox");
+  if (!box) return;
+
+  const messages = box.querySelectorAll(".bot-msg");
+  const last = messages[messages.length - 1];
+
+  if (!last) {
+    addChatMessage("bot", text);
+    return;
+  }
+
+  last.innerHTML = escapeHtml(text).replace(/\n/g, "<br>");
+  box.scrollTop = box.scrollHeight;
+}
+
+function extractWbsFromText(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+
+  const project = allProjects.find(function (p) {
+    const wbs = String(p.wbs || "").trim();
+    return wbs && raw.toUpperCase().indexOf(wbs.toUpperCase()) !== -1;
+  });
+
+  if (project && project.wbs) return project.wbs;
+
+  const match = raw.match(/[A-Z]-\d{2}-[A-Z]-[A-Z0-9]+\.\d{4}\.\d{2}\.\d/ig);
+  return match && match[0] ? match[0].toUpperCase() : "";
+}
+
+function buildAssistantBackendAnswer(data) {
+  if (!data || data.success === false) {
+    return "AI Backend วิเคราะห์ไม่สำเร็จ: " + ((data && data.message) || "ไม่ทราบสาเหตุ");
+  }
+
+  const flags = data.statusFlags || {};
+  const flagText = [
+    "ปิดงาน: " + (flags.isClosedWork ? "ผ่าน" : "ไม่ผ่าน/ยังไม่ปิด"),
+    "ค่าใช้จ่าย: " + (flags.isCostPass ? "PASS" : "FAIL"),
+    "เอกสาร: " + (flags.isDocumentPass ? "PASS" : "FAIL"),
+    "พัสดุ: " + (flags.isMaterialPass ? "PASS" : "FAIL"),
+    "เวลา: " + (flags.isTimePass ? "PASS" : "FAIL")
+  ].join(" | ");
+
+  return [
+    "ผลวิเคราะห์ AI สำหรับ " + (data.wbs || "-"),
+    "Backend Decision: " + (data.backendDecision || "-"),
+    flagText,
+    "",
+    data.result || "AI ไม่ส่งคำตอบกลับมา"
+  ].join("\n");
 }
 
 function localAssistant(text) {
@@ -2407,4 +2652,8 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replaceAll("`", "");
+}
+
+if (typeof window !== "undefined") {
+  window.analyzeProjectFromModal = analyzeProjectFromModal;
 }
