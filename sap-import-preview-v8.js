@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V6';
+  const LAB_VERSION = 'V8';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -14,7 +14,7 @@
   const KNOWN_USER_STATUS = new Set(['A0','A1','A2','A5','B1','B2','Z0','C1','C2','C3','C4','C5','C6','D1','D2','D9','E1','E2','F1','F2','F3','F4']);
   const KNOWN_SYSTEM_STATUS = new Set(['AVAC','BUDG','CLSD','CNF','CRTD','ISBD','NTUP','PCNF','REL','SETC','TECO','MSPT','PRC','SSAP','CNM','ACAS','MANC']);
   const ACTIVE_SYSTEM_STATUS = new Set(['REL','TECO','CLSD']);
-  // V6 Rule: นับเฉพาะ WBS ปลายทาง/Leaf และ User Status ตั้งแต่ C1 ขึ้นไป
+  // V8 Rule: นับเฉพาะ WBS ปลายทาง/Leaf + Level > 2 + ผู้รับผิดชอบไม่ว่าง + User Status ตั้งแต่ C1 ขึ้นไป + SAP Status มี REL/TECO/CLSD
   const ELIGIBLE_USER_STATUS = new Set(['C1','C2','C3','C4','C5','C6','D1','D2','D9','E1','E2','F1','F2','F3','F4']);
   const INELIGIBLE_USER_STATUS = new Set(['A0','A1','A2','A5','B1','B2','Z0']);
 
@@ -73,7 +73,7 @@
     const s = normalizeWbs(wbs);
     const level = Number(String(levelValue == null ? '' : levelValue).replace(/[^0-9]/g, ''));
 
-    // V6: สำหรับ CN43N ให้ใช้คอลัมน์ระดับเป็นหลัก เพราะ WBS บางชุด เช่น P-NHE03.1-D-AANCS.0029
+    // V8: สำหรับ CN43N ให้ใช้คอลัมน์ระดับเป็นหลัก เพราะ WBS บางชุด เช่น P-NHE03.1-D-AANCS.0029
     // เป็นงานจริงแม้รูปแบบจุดไม่เหมือน C-68-D-AANCS.0001.01.1
     if (level >= 3) return 'WORK';
     if (level > 0 && level <= 2) return 'PARENT';
@@ -114,8 +114,11 @@
   }
 
   function applyCn43nLeafRule(rows) {
-    // V6: CN43N เป็น WBS ลำดับชั้น ต้องตัด node/parent ออก แม้ parent จะมี C1/D/F แล้วก็ตาม
-    // กฎหลัก: นับเฉพาะ WBS ปลายทาง (ไม่มีลูกในลำดับถัดไป/ไม่มี WBS ที่ต่อท้ายด้วย .) และ User Status ตั้งแต่ C1 ขึ้นไป
+    // V8: CN43N ใช้กฎเดียวกับการ Filter ใน SAP ที่ผู้ใช้ทำจริง
+    // 1) ตัด Level 1-2 / Node / WBS แม่ออก
+    // 2) ต้องมีผู้รับผิดชอบ/ผู้สมัคร ไม่ว่าง
+    // 3) ต้องมี User Status ตั้งแต่ C1 ขึ้นไป
+    // 4) ต้องมี SAP Status เป็น REL/TECO/CLSD อย่างน้อยหนึ่งค่า เพื่อไม่ดึง CRTD-only แม้มี C1
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const rowLevel = numericLevel(row.level);
@@ -138,27 +141,37 @@
       const isLevelParent = rowLevel > 0 && rowLevel <= 2;
       const isParent = isLevelParent || hasChildByNextLevel || hasChildByPrefix;
       const isEligibleUser = (row.userStatusTokens || []).some(function(t) { return ELIGIBLE_USER_STATUS.has(t); });
+      const isActiveSap = hasActiveSystemStatus(row.status);
+      const hasOwner = String(row.owner || '').trim() !== '';
+      const levelOk = rowLevel > 2;
 
       row.wbsType = isParent ? 'PARENT' : 'WORK';
       row.isLeaf = isParent ? 'NO' : 'YES';
-      row.counted = (!isParent && isEligibleUser) ? 'YES' : 'NO';
+      row.activeBySap = isActiveSap ? 'YES' : 'NO';
+      row.ownerFlag = hasOwner ? 'YES' : 'NO';
+      row.userEligibleFlag = isEligibleUser ? 'YES' : 'NO';
+      row.levelOkFlag = levelOk ? 'YES' : 'NO';
+      row.counted = (!isParent && levelOk && hasOwner && isEligibleUser && isActiveSap) ? 'YES' : 'NO';
       row.excludeReason = row.counted === 'YES' ? '' : (
         isLevelParent ? 'Level 1-2 / WBS แม่' :
         hasChildByNextLevel ? 'มี WBS ลูกในลำดับถัดไป' :
-        hasChildByPrefix ? 'มี WBS ลูกต่อท้าย' :
-        !isEligibleUser ? 'User Status ยังไม่ถึง C1' : 'ไม่เข้าเงื่อนไข'
+        hasChildByPrefix ? 'มี WBS ลูกต่อท้าย / Node หลัก' :
+        !levelOk ? 'Level ไม่มากกว่า 2' :
+        !hasOwner ? 'ผู้รับผิดชอบว่าง' :
+        !isEligibleUser ? 'User Status ยังไม่ถึง C1' :
+        !isActiveSap ? 'SAP ยังไม่มี REL/TECO/CLSD' : 'ไม่เข้าเงื่อนไข'
       );
-      row.activeBySap = isEligibleUser ? 'YES' : 'NO';
     }
   }
 
   function eligibleWbsList(parsed) {
     if (!parsed) return [];
 
-    // CN43N V6: ฐานหลัก = WBS ระดับมากกว่า 2 และ User Status ตั้งแต่ C1 ขึ้นไป
+    // CN43N V8: ฐานหลัก = แถวที่ counted = YES เท่านั้น
+    // คือ Leaf + Level > 2 + ผู้รับผิดชอบไม่ว่าง + C1 ขึ้นไป + REL/TECO/CLSD
     if (parsed.type === 'cn43n') {
-      return (parsed.userEligibleWorkWbsList && parsed.userEligibleWorkWbsList.length)
-        ? parsed.userEligibleWorkWbsList
+      return (parsed.countedWbsList && parsed.countedWbsList.length)
+        ? parsed.countedWbsList
         : [];
     }
 
@@ -193,7 +206,7 @@
     const userWork = parsed.userEligibleWorkWbsList ? parsed.userEligibleWorkWbsList.length : 0;
     const userExcluded = parsed.userStatusExcludedWbsList ? parsed.userStatusExcludedWbsList.length : 0;
     const levelExcluded = parsed.levelExcludedWbsList ? parsed.levelExcludedWbsList.length : 0;
-    if (parsed.type === 'cn43n') return `${primaryWbsCount(parsed)} ใช้เทียบ / ตัดระดับ ${levelExcluded} / ยังไม่ถึง C1 ${userExcluded}`;
+    if (parsed.type === 'cn43n') return `${primaryWbsCount(parsed)} ใช้เทียบ / เจ้าของว่าง ${parsed.ownerExcludedWbs || 0} / Node ${parsed.leafExcludedWbs || 0}`;
     return `${primaryWbsCount(parsed)} ใช้เทียบ / C1+ ${userEligible} / งานจริง+C1 ${userWork}`;
   }
 
@@ -321,6 +334,10 @@
     result.userEligibleWorkWbsList = [];
     result.userStatusExcludedWbsList = [];
     result.levelExcludedWbsList = [];
+    result.countedWbsList = [];
+    result.ownerExcludedWbsList = [];
+    result.leafExcludedWbsList = [];
+    result.sapExcludedWbsList = [];
 
     result.uniqueWbs.forEach(w => {
       const m = meta[w] || { types: new Set([wbsLevel(w)]), hasStatus: false, hasActive: false, hasUserStatus: false, hasEligibleUser: false };
@@ -338,6 +355,12 @@
       if (m.hasEligibleUser) result.userEligibleWbsList.push(w);
       if (isWork && m.hasEligibleUser) result.userEligibleWorkWbsList.push(w);
       if (isWork && m.hasUserStatus && !m.hasEligibleUser) result.userStatusExcludedWbsList.push(w);
+
+      const relatedRows = result.rows.filter(r => normalizeWbs(r.wbs) === w);
+      if (relatedRows.some(r => r.counted === 'YES')) result.countedWbsList.push(w);
+      if (relatedRows.some(r => r.excludeReason === 'ผู้รับผิดชอบว่าง')) result.ownerExcludedWbsList.push(w);
+      if (relatedRows.some(r => String(r.excludeReason || '').indexOf('ลูก') >= 0 || String(r.excludeReason || '').indexOf('Node') >= 0)) result.leafExcludedWbsList.push(w);
+      if (relatedRows.some(r => r.excludeReason === 'SAP ยังไม่มี REL/TECO/CLSD')) result.sapExcludedWbsList.push(w);
     });
 
     result.parentWbs = result.parentWbsList.length;
@@ -350,6 +373,10 @@
     result.userEligibleWorkWbs = result.userEligibleWorkWbsList.length;
     result.userStatusExcludedWbs = result.userStatusExcludedWbsList.length;
     result.levelExcludedWbs = result.levelExcludedWbsList.length;
+    result.countedWbs = result.countedWbsList.length;
+    result.ownerExcludedWbs = result.ownerExcludedWbsList.length;
+    result.leafExcludedWbs = result.leafExcludedWbsList.length;
+    result.sapExcludedWbs = result.sapExcludedWbsList.length;
     result.duplicateWbs = topCounts(result.wbsCounts, 20).filter(x => x[1] > 1);
     return result;
   }
@@ -394,7 +421,7 @@
         statusTokens,
         userStatusTokens,
         userStatus: userStatusLabel(userStatusTokens),
-        activeBySap: eligibleByUser ? 'YES' : 'NO',
+        activeBySap: hasActiveSystemStatus(statusCell || line) ? 'YES' : 'NO',
         owner: ownerCell,
         startDate: dates[0] || '',
         raw: line,
@@ -403,7 +430,7 @@
     });
 
     applyCn43nLeafRule(result.rows);
-    result.notes.push('CN43N V6: ใช้ WBS ปลายทาง/Leaf เป็นหลัก และต้องมี User Status ตั้งแต่ C1 ขึ้นไป จึงนับเป็นงานจริง');
+    result.notes.push('CN43N V8: นับเฉพาะ Leaf WBS + Level > 2 + ผู้รับผิดชอบไม่ว่าง + User Status ตั้งแต่ C1 ขึ้นไป + SAP มี REL/TECO/CLSD');
     return finalizeResult(result);
   }
 
@@ -440,7 +467,7 @@
       });
     });
 
-    result.notes.push('ZPSR048 V6: ใช้ User Status ตั้งแต่ C1 ขึ้นไปเป็นเกณฑ์หลัก หากพบสถานะผู้ใช้ในรายงาน');
+    result.notes.push('ZPSR048 V8: ใช้ User Status ตั้งแต่ C1 ขึ้นไปเป็นเกณฑ์หลัก หากพบสถานะผู้ใช้ในรายงาน');
     return finalizeResult(result);
   }
 
@@ -585,7 +612,7 @@
 
   function getPreviewColumns(type) {
     if (type === 'cn43n') return [
-      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['isLeaf','ปลายทาง'], ['activeBySap','C1 ขึ้นไป'], ['counted','นับ'], ['excludeReason','เหตุผลตัด'], ['jobName','ชื่องาน'], ['status','สถานะ'], ['owner','ผู้รับผิดชอบ'], ['startDate','วันที่เริ่ม']
+      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['isLeaf','ปลายทาง'], ['level','Level'], ['ownerFlag','มีผู้รับผิดชอบ'], ['userEligibleFlag','C1 ขึ้นไป'], ['activeBySap','REL/TECO/CLSD'], ['counted','นับ'], ['excludeReason','เหตุผลตัด'], ['jobName','ชื่องาน'], ['status','สถานะ'], ['owner','ผู้รับผิดชอบ']
     ];
     if (type === 'zpsr048') return [
       ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['activeBySap','C1 ขึ้นไป'], ['status','สถานะ'], ['numberCount','จำนวนตัวเลข'], ['lastNumber','ตัวเลขท้ายบรรทัด'], ['jobName','ข้อความที่จับได้']
@@ -635,7 +662,7 @@
 
     return `
       <div class="preview-block">
-        <div class="preview-title">${TYPE_LABELS[type]} Preview V6</div>
+        <div class="preview-title">${TYPE_LABELS[type]} Preview V8</div>
         <div class="kv">
           <span>รูปแบบที่ตรวจพบ</span><span>${delimiterName(parsed.delimiter)}</span>
           <span>จำนวนบรรทัดทั้งหมด</span><span>${parsed.totalLines}</span>
@@ -644,8 +671,12 @@
           <span>WBS ที่มี REL/TECO/CLSD</span><span class="ok">${parsed.activeWbs || 0}</span>
           <span>WBS ที่มี User Status C1 ขึ้นไป</span><span class="ok">${parsed.userEligibleWbs || 0}</span>
           <span>WBS ปลายทาง + C1 ขึ้นไป</span><span class="ok">${parsed.userEligibleWorkWbs || 0}</span>
+          <span>CN43N V8 นับจริง</span><span class="ok">${parsed.countedWbs || primaryWbsCount(parsed)}</span>
           <span>WBS ถูกตัด: Level 1-2</span><span class="warn">${parsed.levelExcludedWbs || 0}</span>
+          <span>WBS ถูกตัด: Node/มีลูก</span><span class="warn">${parsed.leafExcludedWbs || 0}</span>
+          <span>WBS ถูกตัด: ผู้รับผิดชอบว่าง</span><span class="warn">${parsed.ownerExcludedWbs || 0}</span>
           <span>WBS ถูกตัด: ยังไม่ถึง C1</span><span class="${parsed.userStatusExcludedWbs ? 'bad' : 'ok'}">${parsed.userStatusExcludedWbs || 0}</span>
+          <span>WBS ถูกตัด: ยังไม่มี REL/TECO/CLSD</span><span class="${parsed.sapExcludedWbs ? 'bad' : 'ok'}">${parsed.sapExcludedWbs || 0}</span>
           <span>WBS ไม่ซ้ำทั้งหมด</span><span>${parsed.uniqueWbs.length}</span>
           <span>WBS งานจริง</span><span>${parsed.workWbs}</span>
           <span>WBS แม่/หัวโครงการ</span><span>${parsed.parentWbs}</span>
@@ -662,14 +693,18 @@
 
   function summaryText(parsed, type) {
     const lines = [];
-    lines.push(`${TYPE_LABELS[type]} Preview V6`);
+    lines.push(`${TYPE_LABELS[type]} Preview V8`);
     lines.push(`- รูปแบบ: ${delimiterName(parsed.delimiter)}`);
     lines.push(`- จำนวนบรรทัดทั้งหมด: ${parsed.totalLines}`);
     lines.push(`- จำนวนแถวข้อมูลจริง: ${parsed.dataRows}`);
     lines.push(`- จำนวนหลักที่ใช้เทียบ: ${primaryWbsCount(parsed)}`);
     lines.push(`- WBS ที่มี REL/TECO/CLSD: ${parsed.activeWbs || 0}`);
     lines.push(`- WBS ปลายทาง + C1 ขึ้นไป: ${parsed.userEligibleWorkWbs || 0}`);
+    lines.push(`- CN43N V8 นับจริง: ${parsed.countedWbs || primaryWbsCount(parsed)}`);
+    lines.push(`- WBS ถูกตัดเพราะ Node/มีลูก: ${parsed.leafExcludedWbs || 0}`);
+    lines.push(`- WBS ถูกตัดเพราะผู้รับผิดชอบว่าง: ${parsed.ownerExcludedWbs || 0}`);
     lines.push(`- WBS ถูกตัดเพราะยังไม่ถึง C1: ${parsed.userStatusExcludedWbs || 0}`);
+    lines.push(`- WBS ถูกตัดเพราะยังไม่มี REL/TECO/CLSD: ${parsed.sapExcludedWbs || 0}`);
     lines.push(`- WBS ไม่ซ้ำทั้งหมด: ${parsed.uniqueWbs.length}`);
     lines.push(`- WBS งานจริง: ${parsed.workWbs}`);
     lines.push(`- WBS แม่/หัวโครงการ: ${parsed.parentWbs}`);
@@ -741,7 +776,7 @@
   }
 
   function compareWbsList(parsed) {
-    // V6: ใช้รายการเดียวกับจำนวนหลักที่ใช้เทียบ
+    // V8: ใช้รายการเดียวกับจำนวนหลักที่ใช้เทียบ
     // CN43N = Level > 2 และ User Status C1 ขึ้นไป, ZPSR048/ZPSR055 = User Status C1 ขึ้นไป, CN52N = WBS พัสดุที่พบ
     return eligibleWbsList(parsed);
   }
@@ -778,7 +813,7 @@
     });
 
     const text = [
-      'SAP Clipboard Preview V6 - WBS Cross-check',
+      'SAP Clipboard Preview V8 - WBS Cross-check',
       `ฐานเทียบ: ${TYPE_LABELS[baseType]}`,
       `WBS รวมทุกแหล่ง: ${union.length}`,
       `WBS ที่พบครบทุกแหล่งที่วาง: ${allCommon.length}`,
