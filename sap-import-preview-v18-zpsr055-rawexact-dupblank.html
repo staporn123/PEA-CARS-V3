@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V17 ZPSR055 Raw Exact</title>
+  <title>PEA CARS+ SAP Clipboard Preview V18 ZPSR055 Raw Exact</title>
   <style>
 :root {
   --bg: #060b18;
@@ -126,12 +126,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V17 ZPSR055 Raw Exact</p>
+          <p>SAP Clipboard Lab V18 ZPSR055 Raw Exact</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V17 ZPSR055 Raw Exact</div>
+        <div class="safe-title">โหมดทดลอง V18 ZPSR055 Raw Exact</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,7 +154,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V17 ZPSR055 Raw Exact</h2>
+          <h2>SAP Clipboard Import ทดลอง V18 ZPSR055 Raw Exact</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -278,7 +278,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V17-ZPSR055-RAW-EXACT';
+  const LAB_VERSION = 'V18-ZPSR055-RAW-EXACT-DUPBLANK';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -872,7 +872,14 @@ window.addEventListener('error', function(e){
       });
 
       if (!currentWbs && !foundWbs) return;
-      if (!rowUserStatuses.length && !rowSystemStatuses.length && !foundWbs) return;
+
+      // V18: ZPSR055_Raw ต้องเก็บแถวประวัติให้ครบ แม้บางแถวไม่มีรหัสสถานะที่ parser รู้จัก
+      // เช่น แถวที่มีเฉพาะวันที่/เวลา/User/Active-Inactive ก็ยังต้องส่งเข้า Staging
+      const hasRawZpsr055Cells = rawTabCells
+        ? rawTabCells.slice(2, 12).some(x => String(x || '').trim() !== '')
+        : (dates.length > 0 || times.length > 0 || /\bActive\b|\bInactive\b/i.test(line));
+
+      if (!rowUserStatuses.length && !rowSystemStatuses.length && !foundWbs && !hasRawZpsr055Cells) return;
 
       rowUserStatuses.forEach(s => userStatuses.push(s));
       rowSystemStatuses.forEach(s => systemStatuses.push(s));
@@ -1537,9 +1544,28 @@ window.addEventListener('error', function(e){
   function rowsZpsr055ForStaging(parsed) {
     if (!parsed) return [];
     const eligible = new Set(eligibleWbsList(parsed));
+    let lastWbsKey = '';
+
     return (parsed.rows || [])
       .filter(r => r && r.wbs && eligible.has(normalizeWbs(r.wbs)))
-      .map(r => normalizeZpsr055RawMirrorRow_(r));
+      .map(r => {
+        const out = normalizeZpsr055RawMirrorRow_(r).slice(0, 12);
+        const key = normalizeWbs(r.wbs);
+
+        // V18: ทำให้เหมือน ZPSR055_Raw เดิมเป๊ะขึ้น
+        // แถวแรกของแต่ละ WBS ให้มี WBS/คำอธิบาย
+        // แถวถัด ๆ ไปของ WBS เดิมให้ A:B ว่าง ไม่เติมซ้ำ
+        if (key && key === lastWbsKey) {
+          out[0] = '';
+          out[1] = '';
+        } else {
+          if (!String(out[0] || '').trim()) out[0] = r.wbs || '';
+          if (!String(out[1] || '').trim()) out[1] = r.jobName || '';
+          lastWbsKey = key;
+        }
+
+        return padRow_(out, 12);
+      });
   }
 
   function buildStagingPayload() {
