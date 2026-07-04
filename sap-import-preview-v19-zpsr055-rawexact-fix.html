@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V18 ZPSR055 Raw Exact</title>
+  <title>PEA CARS+ SAP Clipboard Preview V19 ZPSR055 Raw Exact Fix</title>
   <style>
 :root {
   --bg: #060b18;
@@ -126,12 +126,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V18 ZPSR055 Raw Exact</p>
+          <p>SAP Clipboard Lab V19 ZPSR055 Raw Exact Fix</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V18 ZPSR055 Raw Exact</div>
+        <div class="safe-title">โหมดทดลอง V19 ZPSR055 Raw Exact Fix</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,7 +154,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V18 ZPSR055 Raw Exact</h2>
+          <h2>SAP Clipboard Import ทดลอง V19 ZPSR055 Raw Exact Fix</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -278,7 +278,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V18-ZPSR055-RAW-EXACT-DUPBLANK';
+  const LAB_VERSION = 'V19-ZPSR055-RAW-EXACT-FIX';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -873,8 +873,12 @@ window.addEventListener('error', function(e){
 
       if (!currentWbs && !foundWbs) return;
 
-      // V18: ZPSR055_Raw ต้องเก็บแถวประวัติให้ครบ แม้บางแถวไม่มีรหัสสถานะที่ parser รู้จัก
+      const dates = (line.match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
+      const times = (line.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) || []);
+
+      // V19: ZPSR055_Raw ต้องเก็บแถวประวัติให้ครบ แม้บางแถวไม่มีรหัสสถานะที่ parser รู้จัก
       // เช่น แถวที่มีเฉพาะวันที่/เวลา/User/Active-Inactive ก็ยังต้องส่งเข้า Staging
+      // แก้ Error เดิม: ต้องประกาศ dates/times ก่อนนำไปใช้
       const hasRawZpsr055Cells = rawTabCells
         ? rawTabCells.slice(2, 12).some(x => String(x || '').trim() !== '')
         : (dates.length > 0 || times.length > 0 || /\bActive\b|\bInactive\b/i.test(line));
@@ -883,8 +887,6 @@ window.addEventListener('error', function(e){
 
       rowUserStatuses.forEach(s => userStatuses.push(s));
       rowSystemStatuses.forEach(s => systemStatuses.push(s));
-      const dates = (line.match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
-      const times = (line.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) || []);
 
       const statusTokens = rowSystemStatuses.slice();
 
@@ -1314,7 +1316,7 @@ window.addEventListener('error', function(e){
 
 
   // ===============================
-  // SAP Staging API Client V17 ZPSR055 Raw Exact
+  // SAP Staging API Client V19 ZPSR055 Raw Exact Fix
   // ===============================
   const STAGING_API_STORAGE_KEY = 'PEA_CARS_SAP_STAGING_API_URL';
 
