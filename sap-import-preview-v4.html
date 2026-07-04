@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V3</title>
-  <link rel="stylesheet" href="sap-import-preview-v3.css" />
+  <title>PEA CARS+ SAP Clipboard Preview V4</title>
+  <link rel="stylesheet" href="sap-import-preview-v4.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -13,12 +13,12 @@
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V3</p>
+          <p>SAP Clipboard Lab V4</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V3</div>
+        <div class="safe-title">โหมดทดลอง V4</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -41,8 +41,8 @@
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview Only / No Backend</div>
-          <h2>SAP Clipboard Import ทดลอง V3</h2>
-          <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง และนับ CN43N จาก WBS ระดับงานจริงเท่านั้น และเทียบความครบถ้วนระหว่าง CN43N / ZPSR048 / CN52N / ZPSR055 โดยยังไม่บันทึกข้อมูลจริง</p>
+          <h2>SAP Clipboard Import ทดลอง V4</h2>
+          <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, กรองเฉพาะงานที่มี SAP Status REL/TECO/CLSD และเทียบความครบถ้วนระหว่าง CN43N / ZPSR048 / CN52N / ZPSR055 โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
           <button class="btn btn-secondary" id="btnPreviewAll">ตรวจสอบทั้งหมด</button>
@@ -136,6 +136,6 @@
     </main>
   </div>
 
-  <script src="sap-import-preview-v3.js"></script>
+  <script src="sap-import-preview-v4.js"></script>
 </body>
 </html>
