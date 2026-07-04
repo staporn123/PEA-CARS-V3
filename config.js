@@ -7,15 +7,15 @@ const CONFIG = {
   // =========================================
   // Google Apps Script API URL
   // =========================================
-  API_URL: "https://script.google.com/macros/s/AKfycbxoQBN39cSIXxCQ8JngfYOagTcvfWD3VIiJ3B9crf7yr1usvJsBLZzIW-D66E-z7mCT/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbyPSBWfs-DBXAHBzxJYv2mqjv4LwT1Lc4ippveYpTt8Cm017si12vueWt_X_4bUOJKO/exec",
 
   API_TIMEOUT: 60000,
 
   // =========================================
   // Application Information
   // =========================================
-  APP_NAME: "PEA CARS+ V5.3.6 Performance Lite",
-  VERSION: "5.3.6",
+  APP_NAME: "PEA CARS+ V5.3.5 Performance Lite",
+  VERSION: "5.3.5",
   COMPANY: "Provincial Electricity Authority",
   AUTHOR: "PEA NE1",
   TIMEZONE: "Asia/Bangkok",
@@ -28,15 +28,7 @@ const CONFIG = {
   FRONTEND_CACHE_ENABLED: true,
   FRONTEND_CACHE_TTL_MS: 180000,       // 3 นาที สำหรับข้อมูลหน้าแรก
   FRONTEND_CACHE_LAZY_TTL_MS: 180000,  // 3 นาที สำหรับ workqueue/alerts/materialwaiting
-  FRONTEND_CACHE_PREFIX: "PEA_CARS_V536",
-
-  // =========================================
-  // Step 2: Backend Pagination / Search Lite
-  // =========================================
-  BACKEND_PAGINATION_ENABLED: true,
-  INIT_ACTION: "initlite",
-  PROJECTS_PAGE_SIZE: 50,
-  PROJECTS_SEARCH_DEBOUNCE_MS: 350,
+  FRONTEND_CACHE_PREFIX: "PEA_CARS_V535",
 
   // =========================================
   // Auto Refresh
