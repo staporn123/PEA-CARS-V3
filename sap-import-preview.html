@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PEA CARS+ SAP Clipboard Preview Only</title>
+  <link rel="stylesheet" href="sap-import-preview.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <h1>PEA CARS+</h1>
+          <p>SAP Clipboard Lab</p>
+        </div>
+      </div>
+
+      <div class="safe-box">
+        <div class="safe-title">โหมดทดลอง</div>
+        <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
+        <ul>
+          <li>ไม่แตะ Code.gs</li>
+          <li>ไม่เขียนลง Google Sheet</li>
+          <li>ไม่ Sync ข้อมูลจริง</li>
+        </ul>
+      </div>
+
+      <nav class="mini-nav">
+        <a href="#cn43n">CN43N</a>
+        <a href="#zpsr048">ZPSR048</a>
+        <a href="#cn52n">CN52N</a>
+        <a href="#zpsr055">ZPSR055</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="page-header">
+        <div>
+          <div class="eyebrow">Preview Only</div>
+          <h2>SAP Clipboard Import ทดลอง</h2>
+          <p>คัดลอกจาก SAP แล้ววางข้อมูลในช่องด้านล่าง ระบบจะ Preview จำนวนบรรทัด จำนวน WBS และตัวอย่างข้อมูล โดยยังไม่บันทึกข้อมูลจริง</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-secondary" id="btnPreviewAll">ตรวจสอบทั้งหมด</button>
+          <button class="btn btn-danger" id="btnClearAll">ล้างทั้งหมด</button>
+        </div>
+      </header>
+
+      <section class="summary-grid" id="summaryGrid">
+        <div class="summary-card"><span>CN43N</span><strong id="sum-cn43n">-</strong><small>ยังไม่ตรวจ</small></div>
+        <div class="summary-card"><span>ZPSR048</span><strong id="sum-zpsr048">-</strong><small>ยังไม่ตรวจ</small></div>
+        <div class="summary-card"><span>CN52N</span><strong id="sum-cn52n">-</strong><small>ยังไม่ตรวจ</small></div>
+        <div class="summary-card"><span>ZPSR055</span><strong id="sum-zpsr055">-</strong><small>ยังไม่ตรวจ</small></div>
+      </section>
+
+      <section class="work-area">
+        <div class="paste-grid">
+          <article class="paste-card" id="cn43n">
+            <div class="card-head">
+              <div><h3>1. CN43N</h3><p>ข้อมูลงาน / WBS / สถานะ SAP / ชื่องาน</p></div>
+              <span class="badge">Project</span>
+            </div>
+            <textarea id="text-cn43n" placeholder="วางข้อมูล CN43N จาก SAP ที่นี่..."></textarea>
+            <div class="card-actions">
+              <button class="btn" data-preview="cn43n">ตรวจสอบ CN43N</button>
+              <button class="btn btn-ghost" data-clear="cn43n">ล้างช่องนี้</button>
+            </div>
+          </article>
+
+          <article class="paste-card" id="zpsr048">
+            <div class="card-head">
+              <div><h3>2. ZPSR048</h3><p>ค่าใช้จ่าย / ค่าแรง / ควบคุมงาน / ขนส่ง / เบ็ดเตล็ด</p></div>
+              <span class="badge orange">Cost</span>
+            </div>
+            <textarea id="text-zpsr048" placeholder="วางข้อมูล ZPSR048 จาก SAP ที่นี่..."></textarea>
+            <div class="card-actions">
+              <button class="btn" data-preview="zpsr048">ตรวจสอบ ZPSR048</button>
+              <button class="btn btn-ghost" data-clear="zpsr048">ล้างช่องนี้</button>
+            </div>
+          </article>
+
+          <article class="paste-card" id="cn52n">
+            <div class="card-head">
+              <div><h3>3. CN52N</h3><p>พัสดุ / Material / จำนวนต้องการ / เบิกแล้ว / คงค้าง</p></div>
+              <span class="badge green">Material</span>
+            </div>
+            <textarea id="text-cn52n" placeholder="วางข้อมูล CN52N จาก SAP ที่นี่..."></textarea>
+            <div class="card-actions">
+              <button class="btn" data-preview="cn52n">ตรวจสอบ CN52N</button>
+              <button class="btn btn-ghost" data-clear="cn52n">ล้างช่องนี้</button>
+            </div>
+          </article>
+
+          <article class="paste-card" id="zpsr055">
+            <div class="card-head">
+              <div><h3>4. ZPSR055</h3><p>Timeline / User Status / System Status / วันที่เปลี่ยนสถานะ</p></div>
+              <span class="badge blue">Timeline</span>
+            </div>
+            <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก SAP ที่นี่..."></textarea>
+            <div class="card-actions">
+              <button class="btn" data-preview="zpsr055">ตรวจสอบ ZPSR055</button>
+              <button class="btn btn-ghost" data-clear="zpsr055">ล้างช่องนี้</button>
+            </div>
+          </article>
+        </div>
+
+        <aside class="result-panel">
+          <div class="result-head">
+            <div>
+              <h3>ผล Preview</h3>
+              <p>แสดงผลจากข้อมูลที่วาง ยังไม่บันทึกลงระบบจริง</p>
+            </div>
+            <button class="btn btn-secondary" id="btnCopySummary">คัดลอกสรุป</button>
+          </div>
+          <div id="resultBox" class="result-box empty">
+            วางข้อมูลจาก SAP แล้วกด “ตรวจสอบ” เพื่อดู Preview
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <script src="sap-import-preview.js"></script>
+</body>
+</html>
