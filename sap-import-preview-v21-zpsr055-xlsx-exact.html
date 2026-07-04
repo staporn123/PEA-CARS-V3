@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V20 ZPSR055 Clipboard Exact</title>
+  <title>PEA CARS+ SAP Clipboard Preview V21 ZPSR055 XLSX Exact</title>
   <style>
 :root {
   --bg: #060b18;
@@ -126,12 +126,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V20 ZPSR055 Clipboard Exact</p>
+          <p>SAP Clipboard Lab V21 ZPSR055 XLSX Exact</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V20 ZPSR055 Clipboard Exact</div>
+        <div class="safe-title">โหมดทดลอง V21 ZPSR055 XLSX Exact</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,7 +154,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V20 ZPSR055 Clipboard Exact</h2>
+          <h2>SAP Clipboard Import ทดลอง V21 ZPSR055 XLSX Exact</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -238,7 +238,15 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
               <div><h3>4. ZPSR055</h3><p>Timeline / User Status / System Status / วันที่เปลี่ยนสถานะ</p></div>
               <span class="badge blue">Timeline</span>
             </div>
-            <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก SAP ที่นี่..."></textarea>
+            <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก SAP ที่นี่ หรือใช้ปุ่มเลือกไฟล์ Excel ด้านล่าง..."></textarea>
+            <div class="note" style="margin-top:10px; padding:10px; border:1px dashed rgba(124,92,255,.45); border-radius:14px;">
+              <strong>V21 สำหรับ ZPSR055:</strong> ถ้าต้องการให้เหมือน ZPSR055_Raw เป๊ะ ให้เลือกไฟล์ Excel 055 (.xlsx) ตรงนี้ ระบบจะอ่าน 12 คอลัมน์แรกและส่งเข้า Staging แบบ Raw Exact
+              <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input id="file-zpsr055-xlsx" type="file" accept=".xlsx,.xls" style="max-width:520px; width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.16); background:#07111f; color:#e5edff;" />
+                <button type="button" class="btn btn-ghost" id="btnClearZpsr055File">ล้างไฟล์ 055</button>
+              </div>
+              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">ยังไม่ได้เลือกไฟล์ ZPSR055 Excel</div>
+            </div>
             <div class="card-actions">
               <button class="btn" data-preview="zpsr055">ตรวจสอบ ZPSR055</button>
               <button class="btn btn-ghost" data-clear="zpsr055">ล้างช่องนี้</button>
@@ -262,6 +270,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
     </main>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
 
 window.addEventListener('error', function(e){
@@ -278,7 +287,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V20-ZPSR055-CLIPBOARD-EXACT';
+  const LAB_VERSION = 'V21-ZPSR055-XLSX-EXACT';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -300,6 +309,8 @@ window.addEventListener('error', function(e){
   let parsedCache = {};
   // V20: เก็บ matrix จาก Clipboard ของ ZPSR055 แบบดิบที่สุด เพื่อไม่ให้ User/วันที่/เวลา/Active หายจากการ parse/rebuild
   let rawClipboardMatrices = { zpsr055: null };
+  // V21: ใช้ Matrix จากไฟล์ Excel ZPSR055 เป็นแหล่งที่น่าเชื่อถือที่สุด เพื่อให้ 12 คอลัมน์แรกตรงกับ ZPSR055_Raw เดิมแบบเป๊ะ
+  let xlsxZpsr055Matrix = null;
 
   function $(id) { return document.getElementById(id); }
   function textOf(type) { const el = $('text-' + type); return el ? el.value || '' : ''; }
@@ -1318,7 +1329,7 @@ window.addEventListener('error', function(e){
 
 
   // ===============================
-  // SAP Staging API Client V20 ZPSR055 Clipboard Exact
+  // SAP Staging API Client V21 ZPSR055 XLSX Exact
   // ===============================
   const STAGING_API_STORAGE_KEY = 'PEA_CARS_SAP_STAGING_API_URL';
 
@@ -1555,6 +1566,68 @@ window.addEventListener('error', function(e){
     return out.length ? out : null;
   }
 
+
+  function zpsr055ExcelCellToText_(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+      .replace(/\r?\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeZpsr055ExcelMatrix_(matrix) {
+    const rows = (matrix || []).map(r => padRow_((r || []).map(zpsr055ExcelCellToText_), 12).slice(0, 12));
+    let headerIndex = -1;
+    for (let i = 0; i < Math.min(rows.length, 30); i++) {
+      const joined = rows[i].join('|');
+      if (/องค์ประกอบ\s*WBS/.test(joined) && /สถานะผู้ใช้/.test(joined) && /สถานะระบบ/.test(joined)) {
+        headerIndex = i;
+        break;
+      }
+    }
+    const dataRows = rows.slice(headerIndex >= 0 ? headerIndex + 1 : 1)
+      .filter(r => r.some(c => String(c || '').trim() !== ''));
+    return dataRows;
+  }
+
+  function matrixToTsv_(matrix) {
+    const header = [
+      'องค์ประกอบ WBS','คำอธิบาย','สถานะผู้ใช้','วันที่เปลี่ยนสถานะผู้ใช้','เวลาเปลี่ยนสถานะผู้ใช้','User เปลี่ยนสถานะผู้ใช้',
+      'การดำเนินการสถานะผู้ใช้','สถานะระบบ','วันที่เปลี่ยนสถานะระบบ','เวลาเปลี่ยนสถานะระบบ','User เปลี่ยนสถานะระบบ','การดำเนินการสถานะระบบ'
+    ];
+    return [header].concat(matrix || []).map(row => padRow_(row, 12).slice(0, 12).join('\t')).join('\n');
+  }
+
+  async function loadZpsr055XlsxFile_(file) {
+    if (!file) return;
+    const status = $('zpsr055FileStatus');
+    if (status) status.textContent = 'กำลังอ่านไฟล์ Excel ZPSR055...';
+    if (!window.XLSX) {
+      if (status) status.textContent = 'ไม่พบไลบรารี XLSX กรุณาเชื่อมต่ออินเทอร์เน็ตแล้ว Refresh หน้าเว็บ';
+      alert('ไม่พบไลบรารี XLSX กรุณาเชื่อมต่ออินเทอร์เน็ตแล้ว Refresh หน้าเว็บ');
+      return;
+    }
+
+    const buf = await file.arrayBuffer();
+    const workbook = XLSX.read(buf, { type: 'array', cellDates: false });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    xlsxZpsr055Matrix = normalizeZpsr055ExcelMatrix_(matrix);
+    rawClipboardMatrices.zpsr055 = xlsxZpsr055Matrix;
+
+    const ta = $('text-zpsr055');
+    if (ta) {
+      ta.value = matrixToTsv_(xlsxZpsr055Matrix);
+      delete parsedCache.zpsr055;
+      previewOne('zpsr055');
+    }
+
+    if (status) {
+      status.textContent = `อ่านไฟล์ ${file.name} สำเร็จ: ${xlsxZpsr055Matrix.length} แถวข้อมูล / ใช้ 12 คอลัมน์แรกแบบ ZPSR055_Raw Exact`;
+    }
+  }
+
   function captureZpsr055Clipboard_(event) {
     try {
       const cd = event && event.clipboardData;
@@ -1653,7 +1726,23 @@ window.addEventListener('error', function(e){
   function rowsZpsr055ForStaging(parsed) {
     if (!parsed) return [];
 
-    // V20: ถ้ามี matrix จาก Clipboard ให้ใช้ matrix นั้นก่อน เพื่อรักษา User/วันที่/เวลา/Active ครบเหมือน ZPSR055_Raw
+    // V21: ถ้ามี matrix จากไฟล์ Excel ให้ใช้ก่อนเสมอ เพราะเป็น Raw Exact ที่ตรงกับ ZPSR055_Raw เดิมที่สุด
+    if (xlsxZpsr055Matrix && xlsxZpsr055Matrix.length) {
+      const eligible = new Set(eligibleWbsList(parsed));
+      const out = [];
+      let currentWbs = '';
+      xlsxZpsr055Matrix.forEach(rawRow => {
+        const row = padRow_((rawRow || []).map(cleanSapCell_), 12).slice(0, 12);
+        const rowWbs = normalizeWbs(row[0]) || findWbsInText(row.join(' '));
+        if (rowWbs) currentWbs = rowWbs;
+        if (!currentWbs) return;
+        if (eligible.size && !eligible.has(normalizeWbs(currentWbs))) return;
+        out.push(row);
+      });
+      if (out.length) return out;
+    }
+
+    // ถ้ามี matrix จาก Clipboard ให้ใช้ matrix นั้นก่อน เพื่อรักษา User/วันที่/เวลา/Active ครบเหมือน ZPSR055_Raw
     const rawRows = zpsr055RawClipboardRowsForStaging_(parsed);
     if (rawRows && rawRows.length) return rawRows;
 
@@ -1831,6 +1920,32 @@ window.addEventListener('error', function(e){
         // ถ้าผู้ใช้แก้ข้อความเองหลัง paste ให้ fallback เป็น tab matrix จาก textarea ถ้ามี
         const tabMatrix = textToTabMatrix_(zpsr055Text.value || '');
         if (tabMatrix) rawClipboardMatrices.zpsr055 = tabMatrix;
+        xlsxZpsr055Matrix = null;
+        const status = $('zpsr055FileStatus');
+        if (status) status.textContent = 'ใช้ข้อมูลจากช่องวาง ZPSR055 / ยังไม่ได้ใช้ไฟล์ Excel';
+      });
+    }
+
+    const zpsr055File = $('file-zpsr055-xlsx');
+    if (zpsr055File) {
+      zpsr055File.addEventListener('change', () => {
+        const file = zpsr055File.files && zpsr055File.files[0];
+        if (file) loadZpsr055XlsxFile_(file).catch(err => {
+          const status = $('zpsr055FileStatus');
+          if (status) status.textContent = 'อ่านไฟล์ไม่สำเร็จ: ' + (err && err.message ? err.message : err);
+          alert('อ่านไฟล์ ZPSR055 ไม่สำเร็จ: ' + (err && err.message ? err.message : err));
+        });
+      });
+    }
+    const clearZpsr055File = $('btnClearZpsr055File');
+    if (clearZpsr055File) {
+      clearZpsr055File.addEventListener('click', () => {
+        xlsxZpsr055Matrix = null;
+        rawClipboardMatrices.zpsr055 = null;
+        const fileInput = $('file-zpsr055-xlsx');
+        if (fileInput) fileInput.value = '';
+        const status = $('zpsr055FileStatus');
+        if (status) status.textContent = 'ล้างไฟล์ ZPSR055 Excel แล้ว';
       });
     }
   }
@@ -1839,7 +1954,7 @@ window.addEventListener('error', function(e){
 })();
 
 try {
-  window.PEA_CARS_SAP_LAB_LOADED = 'V20_ZPSR055_CLIPBOARD_EXACT';
+  window.PEA_CARS_SAP_LAB_LOADED = 'V21_ZPSR055_XLSX_EXACT';
 } catch (_) {}
 
 </script>
