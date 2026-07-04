@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V15 Staging URL Fix</title>
+  <title>PEA CARS+ SAP Clipboard Preview V17 ZPSR055 Raw Exact</title>
   <style>
 :root {
   --bg: #060b18;
@@ -126,12 +126,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V15 Staging</p>
+          <p>SAP Clipboard Lab V17 ZPSR055 Raw Exact</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V15 Staging</div>
+        <div class="safe-title">โหมดทดลอง V17 ZPSR055 Raw Exact</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,7 +154,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V15 Staging</h2>
+          <h2>SAP Clipboard Import ทดลอง V17 ZPSR055 Raw Exact</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -278,7 +278,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V14-STAGING';
+  const LAB_VERSION = 'V17-ZPSR055-RAW-EXACT';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -849,6 +849,11 @@ window.addEventListener('error', function(e){
     lines.forEach((line, index) => {
       if (isNoiseLine(line)) return;
       const cells = splitLine(line, delimiter);
+      // V17: เก็บ cell จาก Tab ต้นฉบับไว้ด้วย เพื่อส่งเข้า SAP_STAGING_ZPSR055 ให้เหมือน ZPSR055_Raw เดิม
+      // สำคัญ: String.split('\t') จะเก็บช่องว่างหัวแถว เช่น WBS/คำอธิบายที่ว่างไว้ ไม่ทำให้คอลัมน์เลื่อน
+      const rawTabCells = String(line).indexOf('\t') >= 0
+        ? String(line).split('\t').map(x => String(x || '').trim())
+        : null;
       if (!cells.length) return;
       const foundWbs = findWbsInText(line);
       if (foundWbs) {
@@ -889,7 +894,11 @@ window.addEventListener('error', function(e){
         date: dates[0] || '',
         time: times[0] || '',
         raw: line,
-        cells
+        cells,
+        rawTabCells,
+        // สำหรับ Staging แบบ Raw Exact: แถวที่ไม่มี WBS ในต้นฉบับต้องคงว่าง ไม่เติม currentWbs ลงไป
+        rawWbsCell: rawTabCells ? (rawTabCells[0] || '') : '',
+        rawDescriptionCell: rawTabCells ? (rawTabCells[1] || '') : ''
       };
       result.rows.push(record);
       if (!perWbs[currentWbs]) perWbs[currentWbs] = { user: [], system: [] };
@@ -1298,7 +1307,7 @@ window.addEventListener('error', function(e){
 
 
   // ===============================
-  // SAP Staging API Client V15 URL Fix
+  // SAP Staging API Client V17 ZPSR055 Raw Exact
   // ===============================
   const STAGING_API_STORAGE_KEY = 'PEA_CARS_SAP_STAGING_API_URL';
 
@@ -1369,14 +1378,130 @@ window.addEventListener('error', function(e){
     });
   }
 
+  function padRow_(arr, columnCount) {
+    const out = (arr || []).slice(0, columnCount).map(v => v == null ? '' : v);
+    while (out.length < columnCount) out.push('');
+    return out;
+  }
+
   function cellsFromWbs(row, columnCount) {
     const cells = (row && row.cells) ? row.cells.slice() : [];
     const target = normalizeWbs(row && row.wbs);
     let start = cells.findIndex(c => normalizeWbs(c) === target || String(c || '').indexOf(target) >= 0 || isLikelyWbs(c));
     if (start < 0) start = 0;
-    const out = cells.slice(start, start + columnCount);
-    while (out.length < columnCount) out.push('');
-    return out;
+    return padRow_(cells.slice(start), columnCount);
+  }
+
+  function isNumericText_(value) {
+    const s = String(value == null ? '' : value).replace(/,/g, '').trim();
+    return /^[-+]?\d+(?:\.\d+)?$/.test(s);
+  }
+
+  function looksLikeNetwork_(value) {
+    return /^\d{6,12}$/.test(String(value == null ? '' : value).trim());
+  }
+
+  function looksLikeStatusCell_(value) {
+    return /\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|MSPT|PRC|SSAP|ACAS|MANC|PCNF)\b/i.test(String(value || ''));
+  }
+
+  function isUserStatusOnly_(value) {
+    const s = String(value == null ? '' : value).trim().toUpperCase();
+    return KNOWN_USER_STATUS.has(s);
+  }
+
+  function normalizeZpsr048RawMirrorRow_(row) {
+    // COST_RAW โครงจริงคือ WBS | Network | คำอธิบาย | สถานะระบบ | สถานะผู้ใช้ | ตัวเลข 27 คอลัมน์
+    // SAP Clipboard บางบรรทัดไม่มี Network / ไม่มี User Status ทำให้ split แล้วคอลัมน์ขยับ
+    // ฟังก์ชันนี้เติมช่องว่างกลับก่อนส่งเข้า SAP_STAGING_ZPSR048
+    const cells = (row && row.cells) ? row.cells.slice() : [];
+    const target = normalizeWbs(row && row.wbs);
+    let i = cells.findIndex(c => normalizeWbs(c) === target || String(c || '').indexOf(target) >= 0 || isLikelyWbs(c));
+    if (i < 0) i = 0;
+
+    const wbs = target || normalizeWbs(cells[i] || '');
+    let p = i + 1;
+
+    let network = '';
+    if (looksLikeNetwork_(cells[p])) {
+      network = cells[p];
+      p++;
+    }
+
+    // รวมคำอธิบายจนกว่าจะเจอ System Status
+    const descParts = [];
+    while (p < cells.length && !looksLikeStatusCell_(cells[p])) {
+      if (cells[p] !== '') descParts.push(cells[p]);
+      p++;
+    }
+    const desc = descParts.join(' ').trim();
+
+    let systemStatus = '';
+    if (p < cells.length && looksLikeStatusCell_(cells[p])) {
+      systemStatus = cells[p];
+      p++;
+    }
+
+    let userStatus = '';
+    if (p < cells.length && isUserStatusOnly_(cells[p])) {
+      userStatus = cells[p];
+      p++;
+    }
+
+    // คงตัวเลขตามลำดับ COST_RAW ตั้งแต่ งบประมาณ ถึง Act. ยอดรวม
+    const nums = [];
+    for (; p < cells.length; p++) {
+      if (isNumericText_(cells[p])) nums.push(cells[p]);
+    }
+
+    return padRow_([wbs, network, desc, systemStatus, userStatus].concat(nums), 32);
+  }
+
+  function normalizeZpsr055RawMirrorRow_(row) {
+    // V17: ส่งเข้า SAP_STAGING_ZPSR055 ให้ "เหมือน ZPSR055_Raw เดิม" มากที่สุด
+    // หลักสำคัญ:
+    // 1) ถ้าแถวต้นฉบับเป็น Tab-separated ให้ใช้ช่องจากต้นฉบับ 12 คอลัมน์แรกทันที
+    // 2) ไม่เติม WBS/คำอธิบายซ้ำในแถวลูก เพราะ ZPSR055_Raw เดิมปล่อยคอลัมน์ A:B ว่างในแถวถัด ๆ ไป
+    // 3) ถ้าไม่ใช่ Tab จึงค่อย fallback จาก parser เพื่อกันข้อมูลเลื่อน
+    const rawTabCells = (row && Array.isArray(row.rawTabCells)) ? row.rawTabCells.slice() : [];
+
+    // กรณีข้อมูลมาจาก SAP/Google Sheet Clipboard ปกติ จะมี tab และควร mirror ตรงนี้
+    if (rawTabCells.length >= 2) {
+      return padRow_(rawTabCells, 12);
+    }
+
+    const cells = (row && row.cells) ? row.cells.slice() : [];
+    const raw = String(row && row.raw || '');
+    const dates = (raw.match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
+    const times = (raw.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) || []);
+
+    // ถ้า split แล้วได้ 12 คอลัมน์ขึ้นไป ให้ใช้ cell เดิม ไม่เติม WBS ซ้ำ
+    if (cells.length >= 12 && (isLikelyWbs(cells[0]) || cells[0] === '')) {
+      return padRow_(cells, 12);
+    }
+
+    // fallback เฉพาะกรณี copy มาเป็น text ธรรมดาที่ไม่มี tab จนรักษาช่องว่างเดิมไม่ได้
+    const wbs = row && row.rawWbsCell ? row.rawWbsCell : (row && row.wbs ? row.wbs : '');
+    const desc = row && row.rawDescriptionCell ? row.rawDescriptionCell : (row && row.jobName ? row.jobName : '');
+    const userStatus = row && row.userStatus ? row.userStatus : '';
+    const systemStatus = row && row.systemStatus ? row.systemStatus : '';
+    const date = row && row.date ? row.date : (dates[0] || '');
+    const time = row && row.time ? row.time : (times[0] || '');
+
+    return padRow_([
+      wbs,
+      desc,
+      userStatus,
+      userStatus ? date : '',
+      userStatus ? time : '',
+      '',
+      '',
+      systemStatus,
+      systemStatus ? date : '',
+      systemStatus ? time : '',
+      '',
+      ''
+    ], 12);
   }
 
   function rowsByEligibleWbs(parsed, columnCount) {
@@ -1395,7 +1520,11 @@ window.addEventListener('error', function(e){
   }
 
   function rowsZpsr048ForStaging(parsed) {
-    return rowsByEligibleWbs(parsed, 32);
+    if (!parsed) return [];
+    const eligible = new Set(eligibleWbsList(parsed));
+    return (parsed.rows || [])
+      .filter(r => r && r.wbs && eligible.has(normalizeWbs(r.wbs)))
+      .map(r => normalizeZpsr048RawMirrorRow_(r));
   }
 
   function rowsCn52nForStaging(parsed) {
@@ -1410,25 +1539,7 @@ window.addEventListener('error', function(e){
     const eligible = new Set(eligibleWbsList(parsed));
     return (parsed.rows || [])
       .filter(r => r && r.wbs && eligible.has(normalizeWbs(r.wbs)))
-      .map(r => {
-        const dates = (String(r.raw || '').match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
-        const times = (String(r.raw || '').match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) || []);
-        return {
-          'องค์ประกอบ WBS': r.wbs || '',
-          'คำอธิบาย': r.jobName || '',
-          'สถานะผู้ใช้': r.userStatus || '',
-          'วันที่เปลี่ยนสถานะผู้ใช้': r.date || dates[0] || '',
-          'เวลาเปลี่ยนสถานะผู้ใช้': r.time || times[0] || '',
-          'User เปลี่ยนสถานะผู้ใช้': '',
-          'การดำเนินการสถานะผู้ใช้': '',
-          'สถานะระบบ': r.systemStatus || '',
-          'วันที่เปลี่ยนสถานะระบบ': r.date || dates[0] || '',
-          'เวลาเปลี่ยนสถานะระบบ': r.time || times[0] || '',
-          'User เปลี่ยนสถานะระบบ': '',
-          'การดำเนินการสถานะระบบ': '',
-          rawLine: r.raw || ''
-        };
-      });
+      .map(r => normalizeZpsr055RawMirrorRow_(r));
   }
 
   function buildStagingPayload() {
