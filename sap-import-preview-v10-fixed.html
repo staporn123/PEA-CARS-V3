@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V9 Fixed</title>
+  <title>PEA CARS+ SAP Clipboard Preview V10 Fixed</title>
   <style>
 :root {
   --bg: #060b18;
@@ -112,12 +112,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V9 Fixed</p>
+          <p>SAP Clipboard Lab V10 Fixed</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V9</div>
+        <div class="safe-title">โหมดทดลอง V10</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -140,7 +140,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview Only / No Backend</div>
-          <h2>SAP Clipboard Import ทดลอง V9 Fixed</h2>
+          <h2>SAP Clipboard Import ทดลอง V10 Fixed</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎ CN43N ใหม่ตามไฟล์กรองจริง: Level > 2 + ผู้รับผิดชอบ/ผู้สมัครไม่ว่าง และเทียบความครบถ้วนระหว่าง CN43N / ZPSR048 / CN52N / ZPSR055 โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -251,7 +251,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V9';
+  const LAB_VERSION = 'V10';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -411,7 +411,7 @@ window.addEventListener('error', function(e){
   function eligibleWbsList(parsed) {
     if (!parsed) return [];
 
-    // CN43N V9: ฐานหลัก = แถวที่ counted = YES เท่านั้น
+    // CN43N V10: ฐานหลัก = แถวที่ counted = YES เท่านั้น
     // คือ Level > 2 + ผู้รับผิดชอบ/ผู้สมัครไม่ว่าง ตามไฟล์ตัวอย่างที่ถูกต้อง
     if (parsed.type === 'cn43n') {
       return (parsed.countedWbsList && parsed.countedWbsList.length)
@@ -674,7 +674,7 @@ window.addEventListener('error', function(e){
     });
 
     applyCn43nLeafRule(result.rows);
-    result.notes.push('CN43N V9: นับตามไฟล์กรองจริง = Level > 2 + ผู้รับผิดชอบ/ผู้สมัครไม่ว่าง');
+    result.notes.push('CN43N V10: นับตามไฟล์กรองจริง = Level > 2 + ผู้รับผิดชอบ/ผู้สมัครไม่ว่าง');
     return finalizeResult(result);
   }
 
@@ -691,6 +691,8 @@ window.addEventListener('error', function(e){
       const nums = extractNumbers(line);
       const statusCell = cells.find(c => /\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|MSPT|PRC|SSAP)\b/i.test(c)) || '';
       const statusTokens = extractSystemStatusTokens(statusCell || line);
+      const userStatusTokens = extractUserStatusTokens(statusCell || line);
+      const eligibleByUser = userStatusTokens.some(t => ELIGIBLE_USER_STATUS.has(t));
       const descCandidate = cells.find(c => c && c !== wbs && /[ก-๙A-Z]/i.test(c) && !/\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|MSPT|PRC|SSAP)\b/i.test(c) && !isLikelyWbs(c)) || '';
       result.rows.push({
         rowNo: index + 1,
@@ -711,7 +713,7 @@ window.addEventListener('error', function(e){
       });
     });
 
-    result.notes.push('ZPSR048 V9: ใช้ User Status ตั้งแต่ C1 ขึ้นไปเป็นเกณฑ์หลัก หากพบสถานะผู้ใช้ในรายงาน');
+    result.notes.push('ZPSR048 V10: แก้ Error userStatusTokens และใช้ User Status ตั้งแต่ C1 ขึ้นไปเป็นเกณฑ์หลัก หากพบสถานะผู้ใช้ในรายงาน');
     return finalizeResult(result);
   }
 
@@ -915,7 +917,7 @@ window.addEventListener('error', function(e){
           <span>WBS ที่มี REL/TECO/CLSD</span><span class="ok">${parsed.activeWbs || 0}</span>
           <span>WBS ที่มี User Status C1 ขึ้นไป</span><span class="ok">${parsed.userEligibleWbs || 0}</span>
           <span>WBS ปลายทาง + C1 ขึ้นไป</span><span class="ok">${parsed.userEligibleWorkWbs || 0}</span>
-          <span>CN43N V9 นับจริง</span><span class="ok">${parsed.countedWbs || primaryWbsCount(parsed)}</span>
+          <span>CN43N V10 นับจริง</span><span class="ok">${parsed.countedWbs || primaryWbsCount(parsed)}</span>
           <span>WBS ถูกตัด: Level 1-2</span><span class="warn">${parsed.levelExcludedWbs || 0}</span>
           <span>WBS ถูกตัด: Node/มีลูก</span><span class="warn">${parsed.leafExcludedWbs || 0}</span>
           <span>WBS ถูกตัด: ผู้รับผิดชอบว่าง</span><span class="warn">${parsed.ownerExcludedWbs || 0}</span>
@@ -944,7 +946,7 @@ window.addEventListener('error', function(e){
     lines.push(`- จำนวนหลักที่ใช้เทียบ: ${primaryWbsCount(parsed)}`);
     lines.push(`- WBS ที่มี REL/TECO/CLSD: ${parsed.activeWbs || 0}`);
     lines.push(`- WBS ปลายทาง + C1 ขึ้นไป: ${parsed.userEligibleWorkWbs || 0}`);
-    lines.push(`- CN43N V9 นับจริง: ${parsed.countedWbs || primaryWbsCount(parsed)}`);
+    lines.push(`- CN43N V10 นับจริง: ${parsed.countedWbs || primaryWbsCount(parsed)}`);
     lines.push(`- WBS ถูกตัดเพราะ Node/มีลูก: ${parsed.leafExcludedWbs || 0}`);
     lines.push(`- WBS ถูกตัดเพราะผู้รับผิดชอบว่าง: ${parsed.ownerExcludedWbs || 0}`);
     lines.push(`- WBS ถูกตัดเพราะยังไม่ถึง C1: ${parsed.userStatusExcludedWbs || 0}`);
