@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V13 Fixed</title>
+  <title>PEA CARS+ SAP Clipboard Preview V15 Staging URL Fix</title>
   <style>
 :root {
   --bg: #060b18;
@@ -43,7 +43,8 @@ body {
 .mini-nav a { color: var(--text); text-decoration: none; padding: 12px 14px; border-radius: 14px; background: var(--panel2); border: 1px solid transparent; }
 .mini-nav a:hover { border-color: var(--brand2); }
 .main { padding: 28px; }
-.page-header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 22px; }
+.page-header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 22px; flex-wrap: wrap; }
+.page-header > div:first-child { flex: 1 1 720px; min-width: 0; }
 .eyebrow { color: var(--brand2); font-weight: 900; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
 h2 { font-size: 32px; margin: 6px 0; }
 .page-header p, .result-head p, .card-head p { color: var(--muted); margin: 0; line-height: 1.6; }
@@ -105,7 +106,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
 
 
 /* SAP Staging API Panel */
-.staging-panel { margin-top: 18px; border: 1px solid rgba(124, 58, 237, .35); background: rgba(124, 58, 237, .08); border-radius: 18px; padding: 16px; grid-column: 1 / -1; }
+.staging-panel { margin-top: 6px; border: 1px solid rgba(124, 58, 237, .35); background: rgba(124, 58, 237, .08); border-radius: 18px; padding: 16px; grid-column: 1 / -1; flex: 0 0 100%; width: 100%; max-width: 100%; }
 .staging-panel h3 { margin: 0 0 8px; font-size: 17px; }
 .staging-panel p { margin: 4px 0 12px; color: var(--muted); }
 .staging-grid { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
@@ -125,16 +126,16 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V13 Fixed</p>
+          <p>SAP Clipboard Lab V15 Staging</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V13</div>
+        <div class="safe-title">โหมดทดลอง V15 Staging</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
-          <li>ไม่เขียนลง Google Sheet</li>
+          <li>เขียนได้เฉพาะชีต SAP_STAGING_* เท่านั้น</li>
           <li>ไม่ Sync ข้อมูลจริง</li>
           <li>ใช้สำหรับ Preview / เทียบ WBS</li>
         </ul>
@@ -152,8 +153,8 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
     <main class="main">
       <header class="page-header">
         <div>
-          <div class="eyebrow">Preview Only / No Backend</div>
-          <h2>SAP Clipboard Import ทดลอง V13 Fixed</h2>
+          <div class="eyebrow">Preview + Staging Only / No Sync</div>
+          <h2>SAP Clipboard Import ทดลอง V15 Staging</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -166,10 +167,11 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
           <h3>บันทึกเข้า SAP Import Staging</h3>
           <p>ขั้นนี้จะเขียนเข้า SAP_STAGING_* เท่านั้น ยังไม่ Sync เข้าระบบจริง</p>
           <div class="staging-grid">
-            <input class="staging-input" id="sapApiUrl" placeholder="วาง Web App URL ของ Apps Script เช่น https://script.google.com/macros/s/.../exec" />
+            <input class="staging-input" id="sapApiUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="วาง Web App URL ของ Apps Script ที่ลงท้าย /exec เช่น https://script.google.com/macros/s/.../exec" />
             <button class="btn btn-secondary" id="btnCheckStagingApi" type="button">ตรวจ API</button>
             <button class="btn" id="btnSaveStaging" type="button">บันทึกเข้า Staging</button>
           </div>
+          <div class="note">ช่อง URL ด้านบนสามารถคลิกแล้ว Ctrl+V ได้ ถ้าวางไม่ได้ให้คลิกในช่องยาวก่อน ไม่ใช่ปุ่มตรวจ API</div>
           <div class="staging-status" id="stagingStatus">ยังไม่ได้เชื่อม API</div>
           <iframe name="sapStageFrame" id="sapStageFrame" style="display:none"></iframe>
         </div>
@@ -1296,7 +1298,7 @@ window.addEventListener('error', function(e){
 
 
   // ===============================
-  // SAP Staging API Client V14
+  // SAP Staging API Client V15 URL Fix
   // ===============================
   const STAGING_API_STORAGE_KEY = 'PEA_CARS_SAP_STAGING_API_URL';
 
