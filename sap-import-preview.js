@@ -1,6 +1,8 @@
 (function () {
   'use strict';
 
+  const LAB_VERSION = 'V3';
+
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
     cn43n: 'CN43N',
@@ -8,21 +10,17 @@
     cn52n: 'CN52N',
     zpsr055: 'ZPSR055'
   };
+
+  const KNOWN_USER_STATUS = new Set(['A0','A1','A2','B1','B2','C1','C2','C3','C4','C5','C6','D1','D2','D9','E1','E2','F1','F2','F3','F4']);
+  const KNOWN_SYSTEM_STATUS = new Set(['AVAC','BUDG','CLSD','CNF','CRTD','ISBD','NTUP','PCNF','REL','SETC','TECO','MSPT','PRC','SSAP','CNM','ACAS','MANC']);
+
   let lastSummaryText = '';
+  let lastCompareText = '';
+  let parsedCache = {};
 
-  function $(id) {
-    return document.getElementById(id);
-  }
-
-  function textOf(type) {
-    const el = $('text-' + type);
-    return el ? el.value || '' : '';
-  }
-
-  function setText(type, value) {
-    const el = $('text-' + type);
-    if (el) el.value = value || '';
-  }
+  function $(id) { return document.getElementById(id); }
+  function textOf(type) { const el = $('text-' + type); return el ? el.value || '' : ''; }
+  function setText(type, value) { const el = $('text-' + type); if (el) el.value = value || ''; }
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -37,26 +35,68 @@
     return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   }
 
+  function normalizeWbs(value) {
+    return String(value || '').trim().toUpperCase().replace(/[–—−]/g, '-').replace(/[^A-Z0-9._-]/g, '');
+  }
+
   function isLikelyWbs(token) {
-    const s = String(token || '').trim();
+    const s = normalizeWbs(token);
     if (!s) return false;
-    if (s.length < 8 || s.length > 45) return false;
-    if (!/[A-Z]/i.test(s) || !/[0-9]/.test(s) || s.indexOf('.') === -1 || s.indexOf('-') === -1) return false;
-    return /^[A-Z0-9][A-Z0-9._-]*$/i.test(s);
+    if (s.length < 8 || s.length > 60) return false;
+    if (!/[A-Z]/.test(s) || !/[0-9]/.test(s) || s.indexOf('.') === -1 || s.indexOf('-') === -1) return false;
+    if (/^(AVAC|BUDG|CLSD|CNF|CRTD|ISBD|NTUP|PCNF|REL|SETC|TECO)$/.test(s)) return false;
+    return /^[A-Z0-9][A-Z0-9._-]*$/.test(s);
+  }
+
+  function extractWbsList(line) {
+    const src = String(line || '').toUpperCase().replace(/[–—−]/g, '-');
+    const tokens = src.split(/[\s|\t]+/).map(x => x.replace(/[,:;()\[\]{}<>]/g, '').trim()).filter(Boolean);
+    const out = [];
+    tokens.forEach(t => { if (isLikelyWbs(t)) out.push(normalizeWbs(t)); });
+    if (!out.length) {
+      const matches = src.match(/[A-Z]-[A-Z0-9._-]*\.[A-Z0-9._-]*\d[A-Z0-9._-]*/g) || [];
+      matches.forEach(m => { if (isLikelyWbs(m)) out.push(normalizeWbs(m)); });
+    }
+    return Array.from(new Set(out));
   }
 
   function findWbsInText(line) {
-    const parts = String(line || '').split(/[\s|\t]+/).filter(Boolean);
-    for (const p of parts) {
-      const cleaned = p.replace(/[,:;()\[\]{}]/g, '').trim();
-      if (isLikelyWbs(cleaned)) return cleaned;
+    const found = extractWbsList(line);
+    return found[0] || '';
+  }
+
+  function wbsLevel(wbs) {
+    const s = normalizeWbs(wbs);
+    const dotCount = (s.match(/\./g) || []).length;
+    const isWork = /\.\d{4}\.\d{2}\.\d+$/i.test(s) || dotCount >= 3;
+    return isWork ? 'WORK' : 'PARENT';
+  }
+
+  function classifyWbsList(list) {
+    let parent = 0;
+    let work = 0;
+    list.forEach(w => { if (wbsLevel(w) === 'WORK') work++; else parent++; });
+    return { parent, work };
+  }
+
+  function primaryWbsCount(parsed) {
+    if (!parsed) return 0;
+    // CN43N เป็นรายงานแบบ hierarchy: มี WBS แม่/ระดับ 1-2 และ WBS งานจริงปนกัน
+    // จำนวนที่ใช้เทียบกับ Dashboard ให้ใช้ WBS งานจริงเท่านั้น เพื่อไม่ให้นับเกิน
+    if (parsed.type === 'cn43n' && parsed.workWbs > 0) return parsed.workWbs;
+    return parsed.workWbs > 0 ? parsed.workWbs : parsed.uniqueWbs.length;
+  }
+
+  function primaryWbsLabel(parsed) {
+    if (!parsed) return 'ยังไม่ตรวจ';
+    if (parsed.type === 'cn43n') {
+      return `${parsed.workWbs} งานจริง / ${parsed.parentWbs} แม่ / รวม ${parsed.uniqueWbs.length}`;
     }
-    const fallback = String(line || '').match(/[A-Z]-[A-Z0-9._-]*\.[A-Z0-9._-]+/i);
-    return fallback ? fallback[0] : '';
+    return `${parsed.workWbs} งานจริง / ${parsed.parentWbs} แม่ / รวม ${parsed.uniqueWbs.length}`;
   }
 
   function detectDelimiter(text) {
-    const sample = normalizeText(text).split('\n').slice(0, 20).join('\n');
+    const sample = normalizeText(text).split('\n').slice(0, 40).join('\n');
     const tabCount = (sample.match(/\t/g) || []).length;
     const pipeCount = (sample.match(/\|/g) || []).length;
     if (tabCount >= pipeCount && tabCount > 0) return 'tab';
@@ -70,7 +110,7 @@
       return String(line)
         .split('|')
         .map(x => x.trim())
-        .filter((x, i, arr) => x || (i > 0 && i < arr.length - 1));
+        .filter(x => x !== '');
     }
     return String(line).trim().split(/\s{2,}|\t/).map(x => x.trim()).filter(Boolean);
   }
@@ -78,93 +118,264 @@
   function isNoiseLine(line) {
     const s = String(line || '').trim();
     if (!s) return true;
-    if (/^-{5,}$/.test(s.replace(/\s/g, ''))) return true;
-    if (/^={5,}$/.test(s.replace(/\s/g, ''))) return true;
-    if (/^\+[-+]+\+$/.test(s)) return true;
+    const compact = s.replace(/\s/g, '');
+    if (/^-{5,}$/.test(compact)) return true;
+    if (/^={5,}$/.test(compact)) return true;
+    if (/^[+\-|]{5,}$/.test(compact)) return true;
     return false;
   }
 
-  function parseGeneric(text, options) {
-    const sourceText = normalizeText(text);
-    const delimiter = detectDelimiter(sourceText);
-    const lines = sourceText.split('\n');
-    const rows = [];
-    const uniqueWbs = new Set();
-    let lastWbs = '';
-    let lastDesc = '';
-
-    for (let i = 0; i < lines.length; i++) {
-      const rawLine = lines[i];
-      if (isNoiseLine(rawLine)) continue;
-
-      const cells = splitLine(rawLine, delimiter);
-      if (!cells.length) continue;
-
-      const joined = cells.join(' ');
-      let wbs = findWbsInText(joined);
-      let desc = '';
-
-      if (wbs) {
-        const wbsCellIndex = cells.findIndex(c => String(c).indexOf(wbs) !== -1 || isLikelyWbs(c));
-        desc = wbsCellIndex >= 0 ? (cells[wbsCellIndex + 1] || '') : '';
-        lastWbs = wbs;
-        if (desc) lastDesc = desc;
-      } else if (options && options.fillDownWbs) {
-        wbs = lastWbs;
-        desc = lastDesc;
-      }
-
-      if (wbs) uniqueWbs.add(wbs);
-
-      rows.push({
-        rowNo: i + 1,
-        raw: rawLine,
-        cells,
-        wbs,
-        desc
-      });
-    }
-
-    return {
-      delimiter,
-      totalLines: lines.filter(l => String(l).trim()).length,
-      dataRows: rows.length,
-      uniqueWbs: Array.from(uniqueWbs),
-      rows
-    };
+  function toNumber(value) {
+    const s = String(value == null ? '' : value).replace(/,/g, '').trim();
+    if (!s || !/^[-+]?\d+(\.\d+)?$/.test(s)) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
   }
 
-  function countBy(values) {
+  function extractNumbers(line) {
+    const matches = String(line || '').match(/[-+]?\d{1,3}(?:,\d{3})*(?:\.\d+)?|[-+]?\d+\.\d+|[-+]?\d+/g) || [];
+    return matches
+      .map(toNumber)
+      .filter(n => n !== null);
+  }
+
+  function countMap(values) {
     const map = {};
     values.filter(Boolean).forEach(v => { map[v] = (map[v] || 0) + 1; });
     return map;
   }
 
-  function parseZpsr055(text) {
-    const parsed = parseGeneric(text, { fillDownWbs: true });
-    const userStatuses = [];
-    const systemStatuses = [];
-    const knownUser = /^(A0|A1|A2|B1|B2|C1|C2|C3|C4|C5|C6|D1|D2|D9|F1|F2|F3|F4)$/i;
-    const knownSystem = /^(AVAC|BUDG|CLSD|CNF|CRTD|ISBD|NTUP|PCNF|REL|SETC|TECO)$/i;
+  function topCounts(map, limit) {
+    return Object.entries(map).sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, limit || 10);
+  }
 
-    parsed.rows.forEach(row => {
-      row.cells.forEach(cell => {
-        const s = String(cell || '').trim().toUpperCase();
-        if (knownUser.test(s)) userStatuses.push(s);
-        if (knownSystem.test(s)) systemStatuses.push(s);
+  function baseResult(type, text) {
+    const sourceText = normalizeText(text);
+    const lines = sourceText.split('\n');
+    return {
+      type,
+      label: TYPE_LABELS[type],
+      delimiter: detectDelimiter(sourceText),
+      totalLines: lines.filter(l => String(l).trim()).length,
+      dataRows: 0,
+      rows: [],
+      uniqueWbs: [],
+      wbsCounts: {},
+      parentWbs: 0,
+      workWbs: 0,
+      notes: []
+    };
+  }
+
+  function finalizeResult(result) {
+    result.dataRows = result.rows.length;
+    const allWbs = result.rows.map(r => r.wbs).filter(Boolean);
+    result.wbsCounts = countMap(allWbs);
+    result.uniqueWbs = Object.keys(result.wbsCounts).sort();
+    const cls = classifyWbsList(result.uniqueWbs);
+    result.parentWbs = cls.parent;
+    result.workWbs = cls.work;
+    result.duplicateWbs = topCounts(result.wbsCounts, 20).filter(x => x[1] > 1);
+    return result;
+  }
+
+  function parseCn43n(text) {
+    const result = baseResult('cn43n', text);
+    const delimiter = result.delimiter;
+    const lines = normalizeText(text).split('\n');
+
+    lines.forEach((line, index) => {
+      if (isNoiseLine(line)) return;
+      const cells = splitLine(line, delimiter);
+      if (!cells.length) return;
+
+      // CN43N ต้องนับจากคอลัมน์แรก "องค์ประกอบ WBS" เป็นหลัก
+      // ห้าม scan ทั้งบรรทัดแบบกว้างเกินไป เพราะ SAP List มี WBS แม่/ลูก/ข้อความอื่นปน ทำให้นับเกินจริง
+      let wbs = '';
+      const firstWbsCell = cells.find(c => isLikelyWbs(c));
+      if (firstWbsCell) wbs = normalizeWbs(firstWbsCell);
+      if (!wbs) return;
+
+      const wi = cells.findIndex(c => normalizeWbs(c) === wbs || String(c).indexOf(wbs) >= 0);
+      const projectDef = cells[wi + 1] || cells[1] || '';
+      const level = cells[wi + 2] || cells[2] || '';
+      const jobName = cells[wi + 3] || cells[3] || '';
+      const statusCell = cells.find(c => /\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|PREL)\b/i.test(c)) || '';
+      const ownerCell = cells.find(c => /^นาย|^นาง|^น\.ส\.|^นางสาว/.test(c)) || '';
+      const dates = (line.match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
+
+      // ถ้า SAP list wrap บรรทัด ทำให้บรรทัดไม่มี level/jobName ชัดเจน ให้ยังเก็บไว้แต่ระบุ raw
+      result.rows.push({
+        rowNo: index + 1,
+        wbs,
+        wbsType: wbsLevel(wbs),
+        projectDef,
+        level,
+        jobName,
+        status: statusCell,
+        owner: ownerCell,
+        startDate: dates[0] || '',
+        raw: line,
+        cells
       });
     });
 
-    parsed.userStatusCounts = countBy(userStatuses);
-    parsed.systemStatusCounts = countBy(systemStatuses);
-    parsed.userStatusTotal = userStatuses.length;
-    parsed.systemStatusTotal = systemStatuses.length;
-    return parsed;
+    result.notes.push('CN43N V3: จำนวนหลักบนการ์ดใช้ WBS งานจริงเท่านั้น ไม่นับ WBS แม่/หัวโครงการ');
+    return finalizeResult(result);
+  }
+
+  function parseZpsr048(text) {
+    const result = baseResult('zpsr048', text);
+    const delimiter = result.delimiter;
+    const lines = normalizeText(text).split('\n');
+
+    lines.forEach((line, index) => {
+      if (isNoiseLine(line)) return;
+      const wbs = findWbsInText(line);
+      if (!wbs) return;
+      const cells = splitLine(line, delimiter);
+      const nums = extractNumbers(line);
+      const statusCell = cells.find(c => /\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|MSPT|PRC|SSAP)\b/i.test(c)) || '';
+      const descCandidate = cells.find(c => c && c !== wbs && /[ก-๙A-Z]/i.test(c) && !/\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|MSPT|PRC|SSAP)\b/i.test(c) && !isLikelyWbs(c)) || '';
+      result.rows.push({
+        rowNo: index + 1,
+        wbs,
+        wbsType: wbsLevel(wbs),
+        jobName: descCandidate,
+        status: statusCell,
+        numberCount: nums.length,
+        totalNumber: nums.reduce((a,b) => a + b, 0),
+        lastNumber: nums.length ? nums[nums.length - 1] : null,
+        raw: line,
+        cells,
+        numbers: nums
+      });
+    });
+
+    result.notes.push('ZPSR048 เป็น SAP List จึงใช้วิธีจับ WBS และตัวเลขจากบรรทัดข้อมูลจริงก่อน ยังไม่เขียนข้อมูลลง Sheet');
+    return finalizeResult(result);
+  }
+
+  function parseCn52n(text) {
+    const result = baseResult('cn52n', text);
+    const delimiter = result.delimiter;
+    const lines = normalizeText(text).split('\n');
+    const materialCodeRe = /^(?:\d+-\d{2}-\d{3}-\d{4}|[A-Z0-9]{1,4}-[A-Z0-9-]{3,}|\d{1,2}-\d{2}-\d{3}-\d{4})$/i;
+
+    lines.forEach((line, index) => {
+      if (isNoiseLine(line)) return;
+      const wbs = findWbsInText(line);
+      if (!wbs) return;
+      const cells = splitLine(line, delimiter);
+      const wi = cells.findIndex(c => normalizeWbs(c) === wbs || c.indexOf(wbs) >= 0 || isLikelyWbs(c));
+      let network = '';
+      let materialCode = '';
+      let materialName = '';
+      let plant = '';
+      let storage = '';
+
+      for (let i = 0; i < cells.length; i++) {
+        const c = cells[i];
+        if (!network && /^\d{6,12}$/.test(c)) network = c;
+        if (!materialCode && materialCodeRe.test(c)) {
+          materialCode = c;
+          materialName = cells[i + 1] || '';
+        }
+      }
+      const afterMaterial = materialCode ? cells.slice(cells.indexOf(materialCode) + 2) : cells.slice(wi + 1);
+      plant = afterMaterial.find(c => /^\d{3,4}$/.test(c)) || '';
+      storage = afterMaterial.find(c => /^[A-Z]\d{3,4}$/i.test(c)) || '';
+      const nums = extractNumbers(line);
+
+      result.rows.push({
+        rowNo: index + 1,
+        wbs,
+        wbsType: wbsLevel(wbs),
+        network,
+        materialCode,
+        materialName,
+        plant,
+        storage,
+        numberCount: nums.length,
+        raw: line,
+        cells,
+        numbers: nums
+      });
+    });
+
+    return finalizeResult(result);
+  }
+
+  function parseZpsr055(text) {
+    const result = baseResult('zpsr055', text);
+    const delimiter = result.delimiter;
+    const lines = normalizeText(text).split('\n');
+    let currentWbs = '';
+    let currentName = '';
+    const userStatuses = [];
+    const systemStatuses = [];
+    const perWbs = {};
+
+    lines.forEach((line, index) => {
+      if (isNoiseLine(line)) return;
+      const cells = splitLine(line, delimiter);
+      if (!cells.length) return;
+      const foundWbs = findWbsInText(line);
+      if (foundWbs) {
+        currentWbs = foundWbs;
+        const wi = cells.findIndex(c => normalizeWbs(c) === foundWbs || c.indexOf(foundWbs) >= 0 || isLikelyWbs(c));
+        const maybeName = wi >= 0 ? (cells[wi + 1] || cells[wi + 2] || '') : '';
+        if (maybeName && !KNOWN_USER_STATUS.has(maybeName.toUpperCase()) && !KNOWN_SYSTEM_STATUS.has(maybeName.toUpperCase())) currentName = maybeName;
+      }
+
+      const rowUserStatuses = [];
+      const rowSystemStatuses = [];
+      cells.forEach(c => {
+        const s = String(c || '').trim().toUpperCase();
+        if (KNOWN_USER_STATUS.has(s)) rowUserStatuses.push(s);
+        if (KNOWN_SYSTEM_STATUS.has(s)) rowSystemStatuses.push(s);
+      });
+
+      if (!currentWbs && !foundWbs) return;
+      if (!rowUserStatuses.length && !rowSystemStatuses.length && !foundWbs) return;
+
+      rowUserStatuses.forEach(s => userStatuses.push(s));
+      rowSystemStatuses.forEach(s => systemStatuses.push(s));
+      const dates = (line.match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
+      const times = (line.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) || []);
+
+      const record = {
+        rowNo: index + 1,
+        wbs: currentWbs,
+        wbsType: wbsLevel(currentWbs),
+        jobName: currentName,
+        userStatus: rowUserStatuses.join(', '),
+        systemStatus: rowSystemStatuses.join(', '),
+        date: dates[0] || '',
+        time: times[0] || '',
+        raw: line,
+        cells
+      };
+      result.rows.push(record);
+      if (!perWbs[currentWbs]) perWbs[currentWbs] = { user: [], system: [] };
+      rowUserStatuses.forEach(s => perWbs[currentWbs].user.push(s));
+      rowSystemStatuses.forEach(s => perWbs[currentWbs].system.push(s));
+    });
+
+    result.userStatusCounts = countMap(userStatuses);
+    result.systemStatusCounts = countMap(systemStatuses);
+    result.userStatusTotal = userStatuses.length;
+    result.systemStatusTotal = systemStatuses.length;
+    result.perWbs = perWbs;
+    return finalizeResult(result);
   }
 
   function parseByType(type, text) {
+    if (type === 'cn43n') return parseCn43n(text);
+    if (type === 'zpsr048') return parseZpsr048(text);
+    if (type === 'cn52n') return parseCn52n(text);
     if (type === 'zpsr055') return parseZpsr055(text);
-    return parseGeneric(text, { fillDownWbs: false });
+    return finalizeResult(baseResult(type, text));
   }
 
   function delimiterName(delimiter) {
@@ -173,54 +384,83 @@
     return 'Space / Generic';
   }
 
-  function mapPreviewHtml(parsed, type) {
-    const sampleRows = parsed.rows.slice(0, 8);
-    const wbsSample = parsed.uniqueWbs.slice(0, 8).join('\n') || '-';
-    const statusHtml = type === 'zpsr055'
+  function getPreviewColumns(type) {
+    if (type === 'cn43n') return [
+      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['jobName','ชื่องาน'], ['status','สถานะ'], ['owner','ผู้รับผิดชอบ'], ['startDate','วันที่เริ่ม']
+    ];
+    if (type === 'zpsr048') return [
+      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['status','สถานะ'], ['numberCount','จำนวนตัวเลข'], ['lastNumber','ตัวเลขท้ายบรรทัด'], ['jobName','ข้อความที่จับได้']
+    ];
+    if (type === 'cn52n') return [
+      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['network','Network'], ['materialCode','รหัสพัสดุ'], ['materialName','รายการพัสดุ'], ['plant','Plant'], ['storage','Storage']
+    ];
+    if (type === 'zpsr055') return [
+      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['jobName','ชื่องาน'], ['userStatus','User Status'], ['systemStatus','System Status'], ['date','วันที่'], ['time','เวลา']
+    ];
+    return [['rowNo','#'], ['wbs','WBS'], ['raw','Raw']];
+  }
+
+  function renderTable(rows, cols, limit) {
+    const sample = rows.slice(0, limit || 12);
+    if (!sample.length) return '<p class="warn">ยังไม่พบข้อมูลตัวอย่าง</p>';
+    return `<div class="table-wrap"><table class="sample-table"><thead><tr>${cols.map(c => `<th>${escapeHtml(c[1])}</th>`).join('')}</tr></thead><tbody>${sample.map(r => `<tr>${cols.map(c => `<td>${escapeHtml(r[c[0]] == null ? '' : r[c[0]])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function renderPills(map, cls) {
+    const keys = Object.keys(map || {}).sort();
+    if (!keys.length) return '-';
+    return keys.map(k => `<span class="pill ${cls || ''}">${escapeHtml(k)}: ${map[k]}</span>`).join('');
+  }
+
+  function previewHtml(parsed, type) {
+    const wbsSample = parsed.uniqueWbs.slice(0, 10).join('\n') || '-';
+    const extra = type === 'zpsr055'
       ? `<div class="kv">
-          <span>User Status ที่พบ</span><span>${escapeHtml(Object.keys(parsed.userStatusCounts).join(', ') || '-')}</span>
-          <span>System Status ที่พบ</span><span>${escapeHtml(Object.keys(parsed.systemStatusCounts).join(', ') || '-')}</span>
-          <span>จำนวน User Status</span><span>${parsed.userStatusTotal}</span>
-          <span>จำนวน System Status</span><span>${parsed.systemStatusTotal}</span>
+          <span>User Status ที่พบ</span><span>${renderPills(parsed.userStatusCounts, 'ok')}</span>
+          <span>System Status ที่พบ</span><span>${renderPills(parsed.systemStatusCounts, 'warn')}</span>
+          <span>จำนวน User Status</span><span>${parsed.userStatusTotal || 0}</span>
+          <span>จำนวน System Status</span><span>${parsed.systemStatusTotal || 0}</span>
         </div>`
       : '';
-
-    const tableHtml = sampleRows.length ? `
-      <table class="sample-table">
-        <thead><tr><th>#</th><th>WBS</th><th>ตัวอย่างข้อมูล</th></tr></thead>
-        <tbody>${sampleRows.map(r => `
-          <tr>
-            <td>${r.rowNo}</td>
-            <td>${escapeHtml(r.wbs || '-')}</td>
-            <td>${escapeHtml(r.cells.slice(0, 7).join(' | '))}</td>
-          </tr>`).join('')}</tbody>
-      </table>` : '<p class="warn">ยังไม่พบข้อมูลตัวอย่าง</p>';
+    const duplicateText = parsed.duplicateWbs && parsed.duplicateWbs.length
+      ? parsed.duplicateWbs.slice(0, 8).map(x => `${x[0]} (${x[1]})`).join('\n')
+      : '-';
+    const notes = parsed.notes && parsed.notes.length ? `<p class="note">${escapeHtml(parsed.notes.join(' / '))}</p>` : '';
 
     return `
       <div class="preview-block">
-        <div class="preview-title">${TYPE_LABELS[type]} Preview</div>
+        <div class="preview-title">${TYPE_LABELS[type]} Preview V3</div>
         <div class="kv">
           <span>รูปแบบที่ตรวจพบ</span><span>${delimiterName(parsed.delimiter)}</span>
           <span>จำนวนบรรทัดทั้งหมด</span><span>${parsed.totalLines}</span>
-          <span>จำนวนแถวข้อมูล</span><span>${parsed.dataRows}</span>
-          <span>จำนวน WBS ที่พบ</span><span class="${parsed.uniqueWbs.length ? 'ok' : 'warn'}">${parsed.uniqueWbs.length}</span>
-          <span>ตัวอย่าง WBS</span><span>${escapeHtml(wbsSample)}</span>
+          <span>จำนวนแถวข้อมูลจริง</span><span>${parsed.dataRows}</span>
+          <span>จำนวนหลักที่ใช้เทียบ</span><span class="${primaryWbsCount(parsed) ? 'ok' : 'warn'}">${primaryWbsCount(parsed)}</span>
+          <span>WBS ไม่ซ้ำทั้งหมด</span><span>${parsed.uniqueWbs.length}</span>
+          <span>WBS งานจริง</span><span>${parsed.workWbs}</span>
+          <span>WBS แม่/หัวโครงการ</span><span>${parsed.parentWbs}</span>
+          <span>WBS ซ้ำในรายงาน</span><span>${parsed.duplicateWbs.length ? parsed.duplicateWbs.length + ' รายการ' : '-'}</span>
+          <span>ตัวอย่าง WBS</span><span><pre>${escapeHtml(wbsSample)}</pre></span>
+          <span>ตัวอย่าง WBS ซ้ำ</span><span><pre>${escapeHtml(duplicateText)}</pre></span>
         </div>
-        ${statusHtml}
-        ${tableHtml}
+        ${extra}
+        ${notes}
+        ${renderTable(parsed.rows, getPreviewColumns(type), 12)}
       </div>`;
   }
 
   function summaryText(parsed, type) {
     const lines = [];
-    lines.push(`${TYPE_LABELS[type]} Preview`);
+    lines.push(`${TYPE_LABELS[type]} Preview V3`);
     lines.push(`- รูปแบบ: ${delimiterName(parsed.delimiter)}`);
     lines.push(`- จำนวนบรรทัดทั้งหมด: ${parsed.totalLines}`);
-    lines.push(`- จำนวนแถวข้อมูล: ${parsed.dataRows}`);
-    lines.push(`- จำนวน WBS ที่พบ: ${parsed.uniqueWbs.length}`);
+    lines.push(`- จำนวนแถวข้อมูลจริง: ${parsed.dataRows}`);
+    lines.push(`- จำนวนหลักที่ใช้เทียบ: ${primaryWbsCount(parsed)}`);
+    lines.push(`- WBS ไม่ซ้ำทั้งหมด: ${parsed.uniqueWbs.length}`);
+    lines.push(`- WBS งานจริง: ${parsed.workWbs}`);
+    lines.push(`- WBS แม่/หัวโครงการ: ${parsed.parentWbs}`);
     if (type === 'zpsr055') {
-      lines.push(`- User Status: ${Object.keys(parsed.userStatusCounts).join(', ') || '-'}`);
-      lines.push(`- System Status: ${Object.keys(parsed.systemStatusCounts).join(', ') || '-'}`);
+      lines.push(`- User Status: ${Object.keys(parsed.userStatusCounts || {}).join(', ') || '-'}`);
+      lines.push(`- System Status: ${Object.keys(parsed.systemStatusCounts || {}).join(', ') || '-'}`);
     }
     return lines.join('\n');
   }
@@ -229,9 +469,18 @@
     const el = $('sum-' + type);
     if (!el) return;
     const card = el.closest('.summary-card');
-    el.textContent = parsed.uniqueWbs.length || '0';
+    el.textContent = primaryWbsCount(parsed) || '0';
     const small = card ? card.querySelector('small') : null;
-    if (small) small.textContent = `${parsed.dataRows} แถวข้อมูล`;
+    if (small) small.textContent = primaryWbsLabel(parsed);
+  }
+
+  function getOrParse(type) {
+    const text = textOf(type);
+    if (!text.trim()) return null;
+    const parsed = parseByType(type, text);
+    parsedCache[type] = parsed;
+    setSummaryCard(type, parsed);
+    return parsed;
   }
 
   function previewOne(type) {
@@ -243,17 +492,147 @@
       lastSummaryText = `${TYPE_LABELS[type]}: ยังไม่มีข้อมูล`;
       return null;
     }
-    const parsed = parseByType(type, text);
-    setSummaryCard(type, parsed);
+    const parsed = getOrParse(type);
     resultBox.className = 'result-box';
-    resultBox.innerHTML = mapPreviewHtml(parsed, type);
+    resultBox.innerHTML = previewHtml(parsed, type);
     lastSummaryText = summaryText(parsed, type);
     return parsed;
+  }
+
+  function getAllParsed() {
+    const out = {};
+    TYPES.forEach(type => {
+      const text = textOf(type);
+      if (text.trim()) out[type] = getOrParse(type);
+    });
+    return out;
+  }
+
+  function setDifference(a, b) {
+    const bSet = new Set(b);
+    return a.filter(x => !bSet.has(x));
+  }
+
+  function setIntersection(a, b) {
+    const bSet = new Set(b);
+    return a.filter(x => bSet.has(x));
+  }
+
+  function renderList(arr, limit) {
+    if (!arr || !arr.length) return '-';
+    const shown = arr.slice(0, limit || 25).join('\n');
+    const more = arr.length > (limit || 25) ? `\n... อีก ${arr.length - (limit || 25)} รายการ` : '';
+    return shown + more;
+  }
+
+  function compareWbsList(parsed) {
+    if (!parsed) return [];
+    if (parsed.type === 'cn43n') {
+      const workOnly = parsed.uniqueWbs.filter(w => wbsLevel(w) === 'WORK');
+      return workOnly.length ? workOnly : parsed.uniqueWbs;
+    }
+    // แหล่งอื่นใช้ WBS งานจริงถ้ามี เพื่อเทียบกับ CN43N ได้ตรงกว่า
+    const workOnly = parsed.uniqueWbs.filter(w => wbsLevel(w) === 'WORK');
+    return workOnly.length ? workOnly : parsed.uniqueWbs;
+  }
+
+  function buildCompare(parsedMap) {
+    const available = Object.keys(parsedMap).filter(k => parsedMap[k]);
+    if (!available.length) {
+      return { html: '<div class="compare-box empty">ยังไม่มีข้อมูลสำหรับเทียบ WBS</div>', text: 'ยังไม่มีข้อมูลสำหรับเทียบ WBS' };
+    }
+
+    const baseType = parsedMap.cn43n ? 'cn43n' : available[0];
+    const base = compareWbsList(parsedMap[baseType]);
+    const unionSet = new Set();
+    available.forEach(t => compareWbsList(parsedMap[t]).forEach(w => unionSet.add(w)));
+    const union = Array.from(unionSet).sort();
+    const allCommon = available.reduce((acc, t) => setIntersection(acc, compareWbsList(parsedMap[t])), union);
+
+    const summaryRows = available.map(t => {
+      const p = parsedMap[t];
+      const compareList = compareWbsList(p);
+      const missingFromThis = setDifference(base, compareList);
+      const extraInThis = setDifference(compareList, base);
+      return {
+        source: TYPE_LABELS[t],
+        total: compareWbsList(p).length,
+        work: p.workWbs,
+        parent: p.parentWbs,
+        duplicate: p.duplicateWbs.length,
+        missing: t === baseType ? 0 : missingFromThis.length,
+        extra: t === baseType ? 0 : extraInThis.length,
+        missingList: missingFromThis,
+        extraList: extraInThis
+      };
+    });
+
+    const text = [
+      'SAP Clipboard Preview V3 - WBS Cross-check',
+      `ฐานเทียบ: ${TYPE_LABELS[baseType]}`,
+      `WBS รวมทุกแหล่ง: ${union.length}`,
+      `WBS ที่พบครบทุกแหล่งที่วาง: ${allCommon.length}`,
+      '',
+      ...summaryRows.map(r => `${r.source}: รวม ${r.total}, งานจริง ${r.work}, แม่ ${r.parent}, ซ้ำ ${r.duplicate}, ขาดจากฐาน ${r.missing}, เกินจากฐาน ${r.extra}`)
+    ].join('\n');
+
+    const rowsHtml = summaryRows.map(r => `
+      <tr>
+        <td>${escapeHtml(r.source)}</td>
+        <td>${r.total}</td>
+        <td>${r.work}</td>
+        <td>${r.parent}</td>
+        <td>${r.duplicate}</td>
+        <td class="${r.missing ? 'bad' : 'ok'}">${r.missing}</td>
+        <td class="${r.extra ? 'warn' : 'ok'}">${r.extra}</td>
+      </tr>`).join('');
+
+    const diffCards = summaryRows.filter(r => r.source !== TYPE_LABELS[baseType]).map(r => `
+      <div class="diff-card">
+        <h4>${escapeHtml(r.source)} เทียบกับ ${escapeHtml(TYPE_LABELS[baseType])}</h4>
+        <div class="pill ${r.missing ? 'bad' : 'ok'}">ขาด ${r.missing}</div>
+        <div class="pill ${r.extra ? 'warn' : 'ok'}">เกิน ${r.extra}</div>
+        <p class="note">ขาดจาก ${escapeHtml(r.source)}</p>
+        <div class="diff-list">${escapeHtml(renderList(r.missingList, 18))}</div>
+        <p class="note">มีใน ${escapeHtml(r.source)} แต่ไม่อยู่ในฐาน</p>
+        <div class="diff-list">${escapeHtml(renderList(r.extraList, 18))}</div>
+      </div>`).join('');
+
+    const html = `
+      <div class="preview-block">
+        <div class="preview-title">WBS Cross-check</div>
+        <div class="kv">
+          <span>ฐานเทียบ</span><span>${escapeHtml(TYPE_LABELS[baseType])}</span>
+          <span>WBS รวมทุกแหล่ง</span><span>${union.length}</span>
+          <span>WBS ที่พบครบทุกแหล่งที่วาง</span><span class="ok">${allCommon.length}</span>
+          <span>แหล่งข้อมูลที่ใช้เทียบ</span><span>${available.map(t => TYPE_LABELS[t]).join(', ')}</span>
+        </div>
+        <div class="table-wrap">
+          <table class="sample-table compact">
+            <thead><tr><th>แหล่งข้อมูล</th><th>WBS ไม่ซ้ำ</th><th>งานจริง</th><th>แม่</th><th>ซ้ำ</th><th>ขาดจากฐาน</th><th>เกินจากฐาน</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+        <div class="diff-grid">${diffCards || '<div class="note">วางข้อมูลมากกว่า 1 แหล่งเพื่อดูรายการขาด/เกิน</div>'}</div>
+      </div>`;
+
+    return { html, text };
+  }
+
+  function renderCompare() {
+    const parsedMap = getAllParsed();
+    const compare = buildCompare(parsedMap);
+    const box = $('compareBox');
+    box.className = 'compare-box';
+    box.innerHTML = compare.html;
+    lastCompareText = compare.text;
+    return compare;
   }
 
   function previewAll() {
     const htmlParts = [];
     const textParts = [];
+    parsedCache = {};
     TYPES.forEach(type => {
       const text = textOf(type);
       if (!text.trim()) {
@@ -261,19 +640,20 @@
         textParts.push(`${TYPE_LABELS[type]}: ยังไม่มีข้อมูล`);
         return;
       }
-      const parsed = parseByType(type, text);
-      setSummaryCard(type, parsed);
-      htmlParts.push(mapPreviewHtml(parsed, type));
+      const parsed = getOrParse(type);
+      htmlParts.push(previewHtml(parsed, type));
       textParts.push(summaryText(parsed, type));
     });
     const resultBox = $('resultBox');
     resultBox.className = 'result-box';
     resultBox.innerHTML = htmlParts.join('');
     lastSummaryText = textParts.join('\n\n');
+    renderCompare();
   }
 
   function clearOne(type) {
     setText(type, '');
+    delete parsedCache[type];
     const el = $('sum-' + type);
     if (el) {
       el.textContent = '-';
@@ -284,25 +664,28 @@
 
   function clearAll() {
     TYPES.forEach(clearOne);
-    const resultBox = $('resultBox');
-    resultBox.className = 'result-box empty';
-    resultBox.textContent = 'วางข้อมูลจาก SAP แล้วกด “ตรวจสอบ” เพื่อดู Preview';
+    parsedCache = {};
+    $('resultBox').className = 'result-box empty';
+    $('resultBox').textContent = 'วางข้อมูลจาก SAP แล้วกด “ตรวจสอบ” เพื่อดู Preview';
+    $('compareBox').className = 'compare-box empty';
+    $('compareBox').textContent = 'กด “ตรวจสอบทั้งหมด” หรือ “เทียบ WBS” เพื่อดูผลเปรียบเทียบ';
     lastSummaryText = '';
+    lastCompareText = '';
   }
 
-  async function copySummary() {
-    const text = lastSummaryText || 'ยังไม่มีผล Preview';
+  async function copyText(text) {
+    if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      alert('คัดลอกสรุปแล้ว');
+      alert('คัดลอกแล้ว');
     } catch (err) {
-      const tmp = document.createElement('textarea');
-      tmp.value = text;
-      document.body.appendChild(tmp);
-      tmp.select();
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
       document.execCommand('copy');
-      document.body.removeChild(tmp);
-      alert('คัดลอกสรุปแล้ว');
+      document.body.removeChild(ta);
+      alert('คัดลอกแล้ว');
     }
   }
 
@@ -313,18 +696,12 @@
     document.querySelectorAll('[data-clear]').forEach(btn => {
       btn.addEventListener('click', () => clearOne(btn.getAttribute('data-clear')));
     });
-    $('btnPreviewAll')?.addEventListener('click', previewAll);
-    $('btnClearAll')?.addEventListener('click', clearAll);
-    $('btnCopySummary')?.addEventListener('click', copySummary);
+    $('btnPreviewAll').addEventListener('click', previewAll);
+    $('btnCompareOnly').addEventListener('click', renderCompare);
+    $('btnClearAll').addEventListener('click', clearAll);
+    $('btnCopySummary').addEventListener('click', () => copyText(lastSummaryText));
+    $('btnCopyCompare').addEventListener('click', () => copyText(lastCompareText));
   }
-
-  window.PeaSapClipboardPreview = {
-    previewOne,
-    previewAll,
-    clearAll,
-    parseGeneric,
-    parseZpsr055
-  };
 
   document.addEventListener('DOMContentLoaded', bindEvents);
 })();
