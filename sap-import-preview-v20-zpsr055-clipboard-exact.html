@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V19 ZPSR055 Raw Exact Fix</title>
+  <title>PEA CARS+ SAP Clipboard Preview V20 ZPSR055 Clipboard Exact</title>
   <style>
 :root {
   --bg: #060b18;
@@ -126,12 +126,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V19 ZPSR055 Raw Exact Fix</p>
+          <p>SAP Clipboard Lab V20 ZPSR055 Clipboard Exact</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V19 ZPSR055 Raw Exact Fix</div>
+        <div class="safe-title">โหมดทดลอง V20 ZPSR055 Clipboard Exact</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,7 +154,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V19 ZPSR055 Raw Exact Fix</h2>
+          <h2>SAP Clipboard Import ทดลอง V20 ZPSR055 Clipboard Exact</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -278,7 +278,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V19-ZPSR055-RAW-EXACT-FIX';
+  const LAB_VERSION = 'V20-ZPSR055-CLIPBOARD-EXACT';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -298,6 +298,8 @@ window.addEventListener('error', function(e){
   let lastSummaryText = '';
   let lastCompareText = '';
   let parsedCache = {};
+  // V20: เก็บ matrix จาก Clipboard ของ ZPSR055 แบบดิบที่สุด เพื่อไม่ให้ User/วันที่/เวลา/Active หายจากการ parse/rebuild
+  let rawClipboardMatrices = { zpsr055: null };
 
   function $(id) { return document.getElementById(id); }
   function textOf(type) { const el = $('text-' + type); return el ? el.value || '' : ''; }
@@ -1316,7 +1318,7 @@ window.addEventListener('error', function(e){
 
 
   // ===============================
-  // SAP Staging API Client V19 ZPSR055 Raw Exact Fix
+  // SAP Staging API Client V20 ZPSR055 Clipboard Exact
   // ===============================
   const STAGING_API_STORAGE_KEY = 'PEA_CARS_SAP_STAGING_API_URL';
 
@@ -1466,6 +1468,111 @@ window.addEventListener('error', function(e){
     return padRow_([wbs, network, desc, systemStatus, userStatus].concat(nums), 32);
   }
 
+
+  function cleanSapCell_(value) {
+    return String(value == null ? '' : value)
+      .replace(/\u00a0/g, ' ')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/\r?\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function htmlToMatrix_(html) {
+    try {
+      const src = String(html || '');
+      if (!src || !/<\s*(table|tr|td|th|tbody|thead)\b/i.test(src)) return null;
+      const doc = new DOMParser().parseFromString(src, 'text/html');
+      const trs = Array.from(doc.querySelectorAll('tr'));
+      const matrix = trs.map(tr => {
+        return Array.from(tr.querySelectorAll('th,td')).map(td => cleanSapCell_(td.textContent || ''));
+      }).filter(row => row.some(cell => cell !== ''));
+      return matrix.length ? matrix : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function textToTabMatrix_(text) {
+    const lines = normalizeText(text).split('\n');
+    const matrix = [];
+    let hasTab = false;
+    lines.forEach(line => {
+      if (String(line).indexOf('\t') >= 0) hasTab = true;
+    });
+    if (!hasTab) return null;
+    lines.forEach(line => {
+      if (isNoiseLine(line)) return;
+      const row = String(line).split('\t').map(cleanSapCell_);
+      if (row.some(cell => cell !== '')) matrix.push(row);
+    });
+    return matrix.length ? matrix : null;
+  }
+
+  function isZpsr055HeaderRow_(row) {
+    const joined = (row || []).map(cleanSapCell_).join('|');
+    return /สถานะผู้ใช้|วันที่เปลี่ยนสถานะผู้ใช้|เวลาเปลี่ยนสถานะผู้ใช้|User เปลี่ยนสถานะผู้ใช้|สถานะระบบ/.test(joined)
+      || /รายงานการเปลี่ยนแปลงสถานะของหมายเลขงาน/.test(joined);
+  }
+
+  function isZpsr055DataLikeRow_(row) {
+    const r = padRow_((row || []).map(cleanSapCell_), 12);
+    if (isZpsr055HeaderRow_(r)) return false;
+    const joined = r.slice(0, 12).join(' ').trim();
+    if (!joined) return false;
+    const hasWbs = isLikelyWbs(r[0]) || findWbsInText(joined);
+    const hasDate = /\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/.test(joined);
+    const hasTime = /\b\d{1,2}:\d{2}(?::\d{2})?\b/.test(joined);
+    const hasStatusOrUser = (r || []).some(c => {
+      const u = String(c || '').trim().toUpperCase();
+      return KNOWN_USER_STATUS.has(u) || KNOWN_SYSTEM_STATUS.has(u) || /^E[A-Z0-9]{5,}$/.test(u) || /^(Active|Inactive)$/i.test(String(c || '').trim());
+    });
+    return !!(hasWbs || hasDate || hasTime || hasStatusOrUser);
+  }
+
+  function zpsr055RawClipboardRowsForStaging_(parsed) {
+    const matrix = rawClipboardMatrices.zpsr055;
+    if (!matrix || !matrix.length) return null;
+
+    const eligible = new Set(eligibleWbsList(parsed));
+    const out = [];
+    let currentWbs = '';
+
+    matrix.forEach(rawRow => {
+      const row = padRow_((rawRow || []).map(cleanSapCell_), 12).slice(0, 12);
+      if (!isZpsr055DataLikeRow_(row)) return;
+
+      const rowWbs = normalizeWbs(row[0]) || findWbsInText(row.join(' '));
+      if (rowWbs) currentWbs = rowWbs;
+      if (!currentWbs) return;
+      if (eligible.size && !eligible.has(normalizeWbs(currentWbs))) return;
+
+      // V20: ห้ามเติม/สร้างค่า C:L ใหม่เด็ดขาด ให้คงค่า cell ตาม Clipboard
+      // ถ้าแถวนี้เป็นแถวลูกและ A:B ว่าง ก็ปล่อยว่างเหมือน ZPSR055_Raw
+      out.push(row);
+    });
+
+    return out.length ? out : null;
+  }
+
+  function captureZpsr055Clipboard_(event) {
+    try {
+      const cd = event && event.clipboardData;
+      if (!cd) return;
+      const html = cd.getData('text/html') || '';
+      const plain = cd.getData('text/plain') || '';
+      const htmlMatrix = htmlToMatrix_(html);
+      const tabMatrix = textToTabMatrix_(plain);
+      rawClipboardMatrices.zpsr055 = htmlMatrix || tabMatrix || null;
+      if (rawClipboardMatrices.zpsr055) {
+        console.log('ZPSR055 clipboard matrix captured', rawClipboardMatrices.zpsr055.length, 'rows');
+      }
+    } catch (err) {
+      console.warn('captureZpsr055Clipboard failed', err);
+      rawClipboardMatrices.zpsr055 = null;
+    }
+  }
+
   function normalizeZpsr055RawMirrorRow_(row) {
     // V17: ส่งเข้า SAP_STAGING_ZPSR055 ให้ "เหมือน ZPSR055_Raw เดิม" มากที่สุด
     // หลักสำคัญ:
@@ -1545,6 +1652,12 @@ window.addEventListener('error', function(e){
 
   function rowsZpsr055ForStaging(parsed) {
     if (!parsed) return [];
+
+    // V20: ถ้ามี matrix จาก Clipboard ให้ใช้ matrix นั้นก่อน เพื่อรักษา User/วันที่/เวลา/Active ครบเหมือน ZPSR055_Raw
+    const rawRows = zpsr055RawClipboardRowsForStaging_(parsed);
+    if (rawRows && rawRows.length) return rawRows;
+
+    // fallback สำหรับกรณีไม่มีข้อมูล Clipboard HTML/Tab ให้ใช้ parser เดิม แต่ยังพยายามคง rawTabCells
     const eligible = new Set(eligibleWbsList(parsed));
     let lastWbsKey = '';
 
@@ -1554,9 +1667,6 @@ window.addEventListener('error', function(e){
         const out = normalizeZpsr055RawMirrorRow_(r).slice(0, 12);
         const key = normalizeWbs(r.wbs);
 
-        // V18: ทำให้เหมือน ZPSR055_Raw เดิมเป๊ะขึ้น
-        // แถวแรกของแต่ละ WBS ให้มี WBS/คำอธิบาย
-        // แถวถัด ๆ ไปของ WBS เดิมให้ A:B ว่าง ไม่เติมซ้ำ
         if (key && key === lastWbsKey) {
           out[0] = '';
           out[1] = '';
@@ -1712,13 +1822,24 @@ window.addEventListener('error', function(e){
     if (btnCheck) btnCheck.addEventListener('click', checkStagingApi);
     const btnSave = $('btnSaveStaging');
     if (btnSave) btnSave.addEventListener('click', saveToStaging);
+
+    // V20: จับ Clipboard ของ ZPSR055 ตอนวาง เพื่อรักษาโครง 12 คอลัมน์ให้เหมือน ZPSR055_Raw มากที่สุด
+    const zpsr055Text = $('text-zpsr055');
+    if (zpsr055Text) {
+      zpsr055Text.addEventListener('paste', captureZpsr055Clipboard_);
+      zpsr055Text.addEventListener('input', () => {
+        // ถ้าผู้ใช้แก้ข้อความเองหลัง paste ให้ fallback เป็น tab matrix จาก textarea ถ้ามี
+        const tabMatrix = textToTabMatrix_(zpsr055Text.value || '');
+        if (tabMatrix) rawClipboardMatrices.zpsr055 = tabMatrix;
+      });
+    }
   }
 
   document.addEventListener('DOMContentLoaded', bindEvents);
 })();
 
 try {
-  window.PEA_CARS_SAP_LAB_LOADED = 'V14_STAGING_INLINE';
+  window.PEA_CARS_SAP_LAB_LOADED = 'V20_ZPSR055_CLIPBOARD_EXACT';
 } catch (_) {}
 
 </script>
