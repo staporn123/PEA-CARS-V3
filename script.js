@@ -1,5 +1,5 @@
 /*
- * V5.3.5 PERFORMANCE LITE STEP 1: Frontend Cache + AI Button
+ * V5.3.6 PERFORMANCE LITE STEP 2: Frontend Cache + Projects Pagination/Search Lite
  =========================================================
    PEA CARS+ V4 Professional Edition - Turbo V6.2 Stable Filter Logic
    File: script.js
@@ -20,6 +20,21 @@ let activeDashboardFilter = "all";
 const detailCache = new Map();
 let assistantBusy = false;
 let projectAiBusy = false;
+
+// V5.3.6 STEP 2: Projects Pagination / Search Lite
+let projectsPageState = {
+  page: 1,
+  pageSize: 50,
+  keyword: "",
+  filter: "all",
+  totalItems: 0,
+  totalPages: 1,
+  hasNextPage: false,
+  hasPrevPage: false,
+  isBackend: false
+};
+let projectSearchDebounceTimer = null;
+let dashboardDataFromBackend = null;
 
 
 // =========================================
@@ -141,19 +156,34 @@ function clearFrontendCache(showLog) {
 async function getInitDataWithFrontendCache_(forceRefresh) {
   lastInitLoadedFromFrontendCache = false;
 
+  const action = initActionName_();
+  const params = action === "initlite" ? { page: 1, pageSize: projectPageSize_() } : {};
+  const cacheName = "init_" + action + "_" + projectPageSize_();
+
   if (!forceRefresh) {
-    const cached = frontendCacheGet_("init", frontendCacheTtlMs_());
+    const cached = frontendCacheGet_(cacheName, frontendCacheTtlMs_());
     if (cached) {
       lastInitLoadedFromFrontendCache = true;
       cached.frontendCached = true;
-      cached.cacheSource = "browser-sessionStorage:init";
+      cached.cacheSource = "browser-sessionStorage:" + action;
       return cached;
     }
   }
 
-  const fresh = await apiAction("init");
-  frontendCacheSet_("init", fresh);
-  return fresh;
+  try {
+    const fresh = await apiAction(action, params);
+    frontendCacheSet_(cacheName, fresh);
+    return fresh;
+  } catch (err) {
+    // ถ้า Backend ยังไม่มี action=initlite ให้ fallback เป็น init เดิมทันที
+    if (action !== "init") {
+      console.warn("initlite ยังไม่พร้อม ใช้ init เดิมแทน:", err.message);
+      const fresh = await apiAction("init");
+      frontendCacheSet_("init_fallback_" + projectPageSize_(), fresh);
+      return fresh;
+    }
+    throw err;
+  }
 }
 
 async function apiActionCached_(action, params, options) {
@@ -177,8 +207,275 @@ if (typeof window !== "undefined") {
   window.clearFrontendCache = clearFrontendCache;
 }
 
+// =========================================
+// V5.3.6 STEP 2: BACKEND PAGINATION / SEARCH LITE
+// ใช้ action=initlite และ action=projectspaged ถ้า Backend รองรับ
+// ถ้า Backend ยังไม่ deploy ฟังก์ชันใหม่ ระบบจะ fallback เป็น action=init เดิม
+// =========================================
+function isBackendPaginationEnabled_() {
+  return typeof CONFIG !== "undefined" && CONFIG.BACKEND_PAGINATION_ENABLED === true;
+}
+
+function projectPageSize_() {
+  if (typeof CONFIG !== "undefined" && CONFIG.PROJECTS_PAGE_SIZE) return Number(CONFIG.PROJECTS_PAGE_SIZE) || 50;
+  if (typeof CONFIG !== "undefined" && CONFIG.PAGE_SIZE) return Number(CONFIG.PAGE_SIZE) || 50;
+  return 50;
+}
+
+function initActionName_() {
+  if (isBackendPaginationEnabled_() && typeof CONFIG !== "undefined" && CONFIG.INIT_ACTION) {
+    return CONFIG.INIT_ACTION;
+  }
+  return "init";
+}
+
+function normalizeProjectsPage_(data) {
+  if (!data) {
+    return {
+      items: [],
+      page: 1,
+      pageSize: projectPageSize_(),
+      totalItems: 0,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPrevPage: false,
+      keyword: "",
+      filter: "all",
+      isBackend: false
+    };
+  }
+
+  if (Array.isArray(data)) {
+    const pageSize = projectPageSize_();
+    return {
+      items: data,
+      page: 1,
+      pageSize: pageSize,
+      totalItems: data.length,
+      totalPages: Math.max(Math.ceil(data.length / pageSize), 1),
+      hasNextPage: data.length > pageSize,
+      hasPrevPage: false,
+      keyword: "",
+      filter: "all",
+      isBackend: false
+    };
+  }
+
+  const items = data.items || data.projects || data.rows || [];
+  const pageSize = Number(data.pageSize || projectPageSize_()) || projectPageSize_();
+  const totalItems = Number(data.totalItems || data.totalProjects || data.total || items.length) || 0;
+  const totalPages = Math.max(Number(data.totalPages || Math.ceil(totalItems / pageSize)) || 1, 1);
+  const page = Math.max(Number(data.page || data.currentPage || 1) || 1, 1);
+
+  return {
+    items: Array.isArray(items) ? items : [],
+    page: page,
+    pageSize: pageSize,
+    totalItems: totalItems,
+    totalPages: totalPages,
+    hasNextPage: !!data.hasNextPage || page < totalPages,
+    hasPrevPage: !!data.hasPrevPage || page > 1,
+    keyword: data.keyword || "",
+    filter: data.filter || "all",
+    isBackend: !!(data.cacheMode || data.success || data.totalPages || data.totalItems)
+  };
+}
+
+function setProjectsPageState_(pageData, extra) {
+  pageData = normalizeProjectsPage_(pageData);
+  extra = extra || {};
+
+  projectsPageState = {
+    page: pageData.page,
+    pageSize: pageData.pageSize,
+    keyword: extra.keyword !== undefined ? extra.keyword : (pageData.keyword || ""),
+    filter: extra.filter !== undefined ? extra.filter : (pageData.filter || "all"),
+    totalItems: pageData.totalItems,
+    totalPages: pageData.totalPages,
+    hasNextPage: pageData.hasNextPage,
+    hasPrevPage: pageData.hasPrevPage,
+    isBackend: pageData.isBackend
+  };
+}
+
+async function fetchProjectsPaged_(options) {
+  options = options || {};
+  const page = Math.max(Number(options.page || 1), 1);
+  const pageSize = Number(options.pageSize || projectPageSize_()) || 50;
+  const keyword = options.keyword || "";
+  const filter = options.filter || "all";
+
+  const params = {
+    page: page,
+    pageSize: pageSize,
+    keyword: keyword,
+    filter: filter
+  };
+
+  return apiActionCached_("projectspaged", params, {
+    type: "lazy",
+    forceRefresh: !!options.forceRefresh,
+    ttlMs: frontendCacheTtlMs_("lazy")
+  });
+}
+
+async function loadProjectsPage_(options) {
+  options = options || {};
+
+  if (!isBackendPaginationEnabled_()) {
+    const keyword = String(options.keyword || "").toLowerCase().trim();
+    let rows = allProjects.slice();
+
+    if (keyword) {
+      rows = rows.filter(function (p) {
+        return [p.wbs, p.jobName, p.owner, p.province, p.systemStatus, p.userStatus, p.workType, p.mainIssue]
+          .some(function (v) { return String(v || "").toLowerCase().includes(keyword); });
+      });
+    }
+
+    renderSearchTable(rows);
+    return;
+  }
+
+  const page = Math.max(Number(options.page || projectsPageState.page || 1), 1);
+  const keyword = String(options.keyword !== undefined ? options.keyword : projectsPageState.keyword || "").trim();
+  const filter = options.filter !== undefined ? options.filter : projectsPageState.filter || "all";
+
+  const tbody = document.getElementById("searchTable");
+  if (tbody && options.target !== "dashboard") {
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">กำลังโหลดข้อมูล...</td></tr>`;
+  }
+
+  try {
+    const result = await fetchProjectsPaged_({
+      page: page,
+      pageSize: projectPageSize_(),
+      keyword: keyword,
+      filter: filter,
+      forceRefresh: !!options.forceRefresh
+    });
+
+    const pageData = normalizeProjectsPage_(result);
+    setProjectsPageState_(pageData, { keyword: keyword, filter: filter });
+
+    if (options.target === "dashboard") {
+      renderProjectTable(pageData.items, {
+        title: options.title || "รายการงาน",
+        totalItems: pageData.totalItems,
+        page: pageData.page,
+        totalPages: pageData.totalPages
+      });
+    } else {
+      renderSearchTable(pageData.items, pageData);
+    }
+
+    return pageData;
+  } catch (err) {
+    console.warn("Backend pagination skipped, fallback to local search:", err.message);
+    const keywordLower = keyword.toLowerCase();
+    let rows = allProjects.slice();
+    if (keywordLower) {
+      rows = rows.filter(function (p) {
+        return [p.wbs, p.jobName, p.owner, p.province, p.systemStatus, p.userStatus, p.workType, p.mainIssue]
+          .some(function (v) { return String(v || "").toLowerCase().includes(keywordLower); });
+      });
+    }
+    renderSearchTable(rows);
+  }
+}
+
+function ensureProjectsPaginationControls_() {
+  const tbody = document.getElementById("searchTable");
+  if (!tbody) return null;
+
+  const tableWrap = tbody.closest(".table-wrap");
+  const card = tableWrap ? tableWrap.closest(".card") : null;
+  if (!card || !tableWrap) return null;
+
+  let controls = document.getElementById("projectsPagination");
+  if (!controls) {
+    controls = document.createElement("div");
+    controls.id = "projectsPagination";
+    controls.className = "projects-pagination";
+    tableWrap.insertAdjacentElement("afterend", controls);
+  }
+
+  return controls;
+}
+
+function renderProjectsPagination_(meta) {
+  const controls = ensureProjectsPaginationControls_();
+  if (!controls) return;
+
+  meta = meta || projectsPageState;
+  const page = Number(meta.page || 1);
+  const totalPages = Number(meta.totalPages || 1);
+  const totalItems = Number(meta.totalItems || 0);
+  const pageSize = Number(meta.pageSize || projectPageSize_());
+  const keyword = meta.keyword || projectsPageState.keyword || "";
+  const start = totalItems ? ((page - 1) * pageSize) + 1 : 0;
+  const end = Math.min(page * pageSize, totalItems);
+
+  controls.innerHTML = `
+    <div class="projects-pagination-info">
+      แสดง ${start.toLocaleString("th-TH")}-${end.toLocaleString("th-TH")} จาก ${totalItems.toLocaleString("th-TH")} งาน
+      ${keyword ? `<span class="pagination-keyword">ค้นหา: ${escapeHtml(keyword)}</span>` : ""}
+    </div>
+    <div class="projects-pagination-actions">
+      <button class="page-btn" data-project-page="prev" ${page <= 1 ? "disabled" : ""}>ก่อนหน้า</button>
+      <span class="page-current">หน้า ${page.toLocaleString("th-TH")} / ${totalPages.toLocaleString("th-TH")}</span>
+      <button class="page-btn" data-project-page="next" ${page >= totalPages ? "disabled" : ""}>ถัดไป</button>
+    </div>
+  `;
+}
+
+function injectPaginationStyle() {
+  if (document.getElementById("paginationStyleV536")) return;
+  const style = document.createElement("style");
+  style.id = "paginationStyleV536";
+  style.textContent = `
+    .projects-pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.38);
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+    .projects-pagination-actions { display: flex; align-items: center; gap: 10px; }
+    .page-btn {
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(37, 99, 235, 0.16);
+      color: #e0f2fe;
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .page-btn:hover:not(:disabled) { background: rgba(37, 99, 235, 0.32); }
+    .page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .page-current { color: #f8fafc; font-weight: 800; }
+    .pagination-keyword {
+      display: inline-flex;
+      margin-left: 8px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.18);
+      color: #c4b5fd;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   injectDashboardFilterStyle();
+  injectPaginationStyle();
   injectAssistantClearButton();
   bindEvents();
   loadAllData();
@@ -417,14 +714,41 @@ function bindEvents() {
   });
 
   const projectSearchBtn = document.getElementById("projectSearchBtn");
-  if (projectSearchBtn) projectSearchBtn.addEventListener("click", searchProjects);
+  if (projectSearchBtn) projectSearchBtn.addEventListener("click", function () { searchProjects(1); });
 
   const projectSearch = document.getElementById("projectSearch");
   if (projectSearch) {
     projectSearch.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") searchProjects();
+      if (e.key === "Enter") searchProjects(1);
+    });
+
+    projectSearch.addEventListener("input", function () {
+      if (!isBackendPaginationEnabled_()) return;
+      clearTimeout(projectSearchDebounceTimer);
+      projectSearchDebounceTimer = setTimeout(function () {
+        searchProjects(1);
+      }, (typeof CONFIG !== "undefined" && CONFIG.PROJECTS_SEARCH_DEBOUNCE_MS) || 350);
     });
   }
+
+  document.addEventListener("click", function (e) {
+    const btn = e.target.closest("[data-project-page]");
+    if (!btn) return;
+    if (btn.disabled) return;
+
+    const target = btn.getAttribute("data-project-page");
+    const nextPage = target === "next" ? projectsPageState.page + 1 : projectsPageState.page - 1;
+
+    if (isBackendPaginationEnabled_()) {
+      loadProjectsPage_({
+        page: nextPage,
+        keyword: projectsPageState.keyword || "",
+        filter: projectsPageState.filter || "all"
+      });
+    } else {
+      searchProjects(nextPage);
+    }
+  });
 
   const globalSearch = document.getElementById("globalSearch");
   if (globalSearch) {
@@ -433,7 +757,7 @@ function bindEvents() {
         showPage("projects");
         const projectSearchInput = document.getElementById("projectSearch");
         if (projectSearchInput) projectSearchInput.value = globalSearch.value;
-        searchProjects();
+        searchProjects(1);
       }
     });
   }
@@ -500,7 +824,16 @@ async function loadAllData(options) {
     // init จะส่งเฉพาะ Dashboard + ACTIVE_PROJECT ไม่โหลด detail หนัก ๆ
     const init = unwrapObject(await getInitDataWithFrontendCache_(!!options.forceRefresh));
 
-    allProjects = init.projects || [];
+    const initialPage = normalizeProjectsPage_(init.projectsPage || init.projectPage || init.projectsPaged || init.projects || []);
+
+    allProjects = init.projects || initialPage.items || [];
+    if (isBackendPaginationEnabled_() && initialPage.items && initialPage.items.length) {
+      allProjects = initialPage.items;
+      setProjectsPageState_(initialPage, { keyword: "", filter: "all" });
+    } else {
+      setProjectsPageState_(allProjects, { keyword: "", filter: "all" });
+    }
+
     workQueue = init.workQueue || [];
     alertCenter = init.alerts || [];
     materialWaiting = normalizeMaterialWaitingRows(init.materialWaiting || init.materialWaitingC3 || init.c3Waiting || []);
@@ -509,15 +842,22 @@ async function loadAllData(options) {
 
     enrichProjectsWithC3Info();
 
-    // V6.2: คำนวณ KPI จาก allProjects ด้วย Logic เดียวกับตอนกด Filter
-    // เพื่อให้จำนวนบนการ์ดตรงกับรายการที่แสดงด้านล่างเสมอ
-    const dashboard = buildDashboardFromProjects(allProjects, init.dashboard || {});
+    // ถ้าใช้ initlite ให้ยึด Dashboard จาก Backend เพราะหน้าเว็บรับมาเฉพาะหน้าแรก ไม่ใช่ข้อมูลทั้งหมด
+    const dashboard = (isBackendPaginationEnabled_() && init.dashboard)
+      ? init.dashboard
+      : buildDashboardFromProjects(allProjects, init.dashboard || {});
+    dashboardDataFromBackend = dashboard;
 
     renderKpi(dashboard);
     renderCharts(dashboard);
     activeDashboardFilter = "all";
-    renderProjectTable(allProjects);
-    renderSearchTable(allProjects);
+    renderProjectTable(allProjects, {
+      title: "งานหน้าแรก",
+      totalItems: projectsPageState.totalItems || allProjects.length,
+      page: projectsPageState.page,
+      totalPages: projectsPageState.totalPages
+    });
+    renderSearchTable(allProjects, projectsPageState);
     renderWorkQueue(workQueue);
     renderAlertCenter(alertCenter);
     renderLastUpdate();
@@ -563,7 +903,9 @@ async function loadLazyDashboardLists(options) {
       if (mw.length) {
         materialWaiting = normalizeMaterialWaitingRows(mw);
         enrichProjectsWithC3Info();
-        const dashboard = buildDashboardFromProjects(allProjects, {});
+        const dashboard = isBackendPaginationEnabled_() && dashboardDataFromBackend
+          ? dashboardDataFromBackend
+          : buildDashboardFromProjects(allProjects, {});
         renderKpi(dashboard);
         renderCharts(dashboard);
         if (activeDashboardFilter === "c3Waiting") applyDashboardFilter("c3Waiting");
@@ -913,7 +1255,7 @@ function renderKpi(data) {
   }).join("");
 }
 
-function applyDashboardFilter(type) {
+async function applyDashboardFilter(type) {
   activeDashboardFilter = type || "all";
 
   let filtered = allProjects.slice();
@@ -987,9 +1329,28 @@ function applyDashboardFilter(type) {
       filtered = allProjects.slice();
   }
 
-  renderProjectTable(filtered);
-  renderSearchTable(filtered);
-  updateDashboardFilterLabel(filterTitle, filtered.length);
+  if (isBackendPaginationEnabled_()) {
+    try {
+      const pageData = await loadProjectsPage_({
+        page: 1,
+        keyword: "",
+        filter: activeDashboardFilter,
+        target: "dashboard",
+        title: filterTitle
+      });
+      renderSearchTable(pageData.items, pageData);
+      updateDashboardFilterLabel(filterTitle, pageData.totalItems);
+    } catch (err) {
+      renderProjectTable(filtered);
+      renderSearchTable(filtered);
+      updateDashboardFilterLabel(filterTitle, filtered.length);
+    }
+  } else {
+    renderProjectTable(filtered);
+    renderSearchTable(filtered);
+    updateDashboardFilterLabel(filterTitle, filtered.length);
+  }
+
   refreshKpiActiveState();
   scrollToProjectOverview();
 }
@@ -1303,12 +1664,22 @@ function renderIssueChart(data) {
    Tables
 ========================= */
 
-function renderProjectTable(rows) {
+function renderProjectTable(rows, meta) {
+  rows = Array.isArray(rows) ? rows : [];
+  meta = meta || {};
+
   const tbody = document.getElementById("projectTable");
   const count = document.getElementById("projectCount");
 
   if (!tbody) return;
-  if (count) count.textContent = rows.length + " งาน";
+  if (count) {
+    if (meta.totalItems && meta.totalItems > rows.length) {
+      const title = meta.title || "รายการงาน";
+      count.textContent = title + " " + rows.length + "/" + meta.totalItems + " งาน";
+    } else {
+      count.textContent = rows.length + " งาน";
+    }
+  }
 
   if (!rows.length) {
     tbody.innerHTML = `
@@ -1322,7 +1693,10 @@ function renderProjectTable(rows) {
   tbody.innerHTML = rows.map(projectRowTemplate).join("");
 }
 
-function renderSearchTable(rows) {
+function renderSearchTable(rows, meta) {
+  rows = Array.isArray(rows) ? rows : [];
+  meta = meta || projectsPageState;
+
   const tbody = document.getElementById("searchTable");
   if (!tbody) return;
 
@@ -1332,10 +1706,12 @@ function renderSearchTable(rows) {
         <td colspan="10" class="empty-state">ไม่พบข้อมูลที่ค้นหา</td>
       </tr>
     `;
+    renderProjectsPagination_(Object.assign({}, projectsPageState, meta, { totalItems: meta.totalItems || 0 }));
     return;
   }
 
   tbody.innerHTML = rows.map(projectRowTemplate).join("");
+  renderProjectsPagination_(meta);
 }
 
 function projectRowTemplate(p) {
@@ -1357,15 +1733,26 @@ function projectRowTemplate(p) {
   `;
 }
 
-function searchProjects() {
+async function searchProjects(page) {
   const input = document.getElementById("projectSearch");
-  const keyword = input ? input.value.trim().toLowerCase() : "";
+  const keyword = input ? input.value.trim() : "";
+  const targetPage = Math.max(Number(page || 1), 1);
+
+  if (isBackendPaginationEnabled_()) {
+    await loadProjectsPage_({
+      page: targetPage,
+      keyword: keyword,
+      filter: "all"
+    });
+    return;
+  }
 
   if (!keyword) {
     renderSearchTable(allProjects);
     return;
   }
 
+  const keywordLower = keyword.toLowerCase();
   const filtered = allProjects.filter(function (p) {
     return [
       p.wbs,
@@ -1377,7 +1764,7 @@ function searchProjects() {
       p.workType,
       p.mainIssue
     ].some(function (v) {
-      return String(v || "").toLowerCase().includes(keyword);
+      return String(v || "").toLowerCase().includes(keywordLower);
     });
   });
 
