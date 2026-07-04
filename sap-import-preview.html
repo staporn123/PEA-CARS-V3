@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview Only</title>
-  <link rel="stylesheet" href="sap-import-preview.css" />
+  <title>PEA CARS+ SAP Clipboard Preview V3</title>
+  <link rel="stylesheet" href="sap-import-preview-v3.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -13,17 +13,18 @@
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab</p>
+          <p>SAP Clipboard Lab V3</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง</div>
+        <div class="safe-title">โหมดทดลอง V3</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
           <li>ไม่เขียนลง Google Sheet</li>
           <li>ไม่ Sync ข้อมูลจริง</li>
+          <li>ใช้สำหรับ Preview / เทียบ WBS</li>
         </ul>
       </div>
 
@@ -32,18 +33,20 @@
         <a href="#zpsr048">ZPSR048</a>
         <a href="#cn52n">CN52N</a>
         <a href="#zpsr055">ZPSR055</a>
+        <a href="#compareBlock">เทียบ WBS</a>
       </nav>
     </aside>
 
     <main class="main">
       <header class="page-header">
         <div>
-          <div class="eyebrow">Preview Only</div>
-          <h2>SAP Clipboard Import ทดลอง</h2>
-          <p>คัดลอกจาก SAP แล้ววางข้อมูลในช่องด้านล่าง ระบบจะ Preview จำนวนบรรทัด จำนวน WBS และตัวอย่างข้อมูล โดยยังไม่บันทึกข้อมูลจริง</p>
+          <div class="eyebrow">Preview Only / No Backend</div>
+          <h2>SAP Clipboard Import ทดลอง V3</h2>
+          <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง และนับ CN43N จาก WBS ระดับงานจริงเท่านั้น และเทียบความครบถ้วนระหว่าง CN43N / ZPSR048 / CN52N / ZPSR055 โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
           <button class="btn btn-secondary" id="btnPreviewAll">ตรวจสอบทั้งหมด</button>
+          <button class="btn btn-secondary" id="btnCompareOnly">เทียบ WBS</button>
           <button class="btn btn-danger" id="btnClearAll">ล้างทั้งหมด</button>
         </div>
       </header>
@@ -55,11 +58,22 @@
         <div class="summary-card"><span>ZPSR055</span><strong id="sum-zpsr055">-</strong><small>ยังไม่ตรวจ</small></div>
       </section>
 
+      <section class="compare-card" id="compareBlock">
+        <div class="card-head compact">
+          <div>
+            <h3>WBS Cross-check</h3>
+            <p>ใช้ CN43N เป็นฐานเทียบ หากยังไม่วาง CN43N ระบบจะใช้ Union ของทุกแหล่งเป็นฐานชั่วคราว</p>
+          </div>
+          <button class="btn btn-secondary" id="btnCopyCompare">คัดลอกผลเทียบ</button>
+        </div>
+        <div id="compareBox" class="compare-box empty">กด “ตรวจสอบทั้งหมด” หรือ “เทียบ WBS” เพื่อดูผลเปรียบเทียบ</div>
+      </section>
+
       <section class="work-area">
         <div class="paste-grid">
           <article class="paste-card" id="cn43n">
             <div class="card-head">
-              <div><h3>1. CN43N</h3><p>ข้อมูลงาน / WBS / สถานะ SAP / ชื่องาน</p></div>
+              <div><h3>1. CN43N</h3><p>ข้อมูลงาน / WBS / สถานะ SAP / ชื่องาน / ผู้รับผิดชอบ</p></div>
               <span class="badge">Project</span>
             </div>
             <textarea id="text-cn43n" placeholder="วางข้อมูล CN43N จาก SAP ที่นี่..."></textarea>
@@ -110,7 +124,7 @@
           <div class="result-head">
             <div>
               <h3>ผล Preview</h3>
-              <p>แสดงผลจากข้อมูลที่วาง ยังไม่บันทึกลงระบบจริง</p>
+              <p>แยกข้อมูลเป็นตารางตัวอย่าง ยังไม่บันทึกลงระบบจริง</p>
             </div>
             <button class="btn btn-secondary" id="btnCopySummary">คัดลอกสรุป</button>
           </div>
@@ -122,6 +136,6 @@
     </main>
   </div>
 
-  <script src="sap-import-preview.js"></script>
+  <script src="sap-import-preview-v3.js"></script>
 </body>
 </html>
