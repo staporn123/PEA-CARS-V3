@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V3';
+  const LAB_VERSION = 'V4';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -13,6 +13,7 @@
 
   const KNOWN_USER_STATUS = new Set(['A0','A1','A2','B1','B2','C1','C2','C3','C4','C5','C6','D1','D2','D9','E1','E2','F1','F2','F3','F4']);
   const KNOWN_SYSTEM_STATUS = new Set(['AVAC','BUDG','CLSD','CNF','CRTD','ISBD','NTUP','PCNF','REL','SETC','TECO','MSPT','PRC','SSAP','CNM','ACAS','MANC']);
+  const ACTIVE_SYSTEM_STATUS = new Set(['REL','TECO','CLSD']);
 
   let lastSummaryText = '';
   let lastCompareText = '';
@@ -65,34 +66,65 @@
     return found[0] || '';
   }
 
-  function wbsLevel(wbs) {
+  function wbsLevel(wbs, levelValue) {
     const s = normalizeWbs(wbs);
+    const level = Number(String(levelValue == null ? '' : levelValue).replace(/[^0-9]/g, ''));
+
+    // V4: สำหรับ CN43N ให้ใช้คอลัมน์ระดับเป็นหลัก เพราะ WBS บางชุด เช่น P-NHE03.1-D-AANCS.0029
+    // เป็นงานจริงแม้รูปแบบจุดไม่เหมือน C-68-D-AANCS.0001.01.1
+    if (level >= 3) return 'WORK';
+    if (level > 0 && level <= 2) return 'PARENT';
+
     const dotCount = (s.match(/\./g) || []).length;
     const isWork = /\.\d{4}\.\d{2}\.\d+$/i.test(s) || dotCount >= 3;
     return isWork ? 'WORK' : 'PARENT';
   }
 
-  function classifyWbsList(list) {
-    let parent = 0;
-    let work = 0;
-    list.forEach(w => { if (wbsLevel(w) === 'WORK') work++; else parent++; });
-    return { parent, work };
+  function extractSystemStatusTokens(value) {
+    const src = String(value || '').toUpperCase();
+    const tokens = src.split(/[^A-Z0-9]+/).filter(Boolean);
+    return Array.from(new Set(tokens.filter(t => KNOWN_SYSTEM_STATUS.has(t))));
+  }
+
+  function hasActiveSystemStatus(value) {
+    return extractSystemStatusTokens(value).some(t => ACTIVE_SYSTEM_STATUS.has(t));
+  }
+
+  function eligibleWbsList(parsed) {
+    if (!parsed) return [];
+
+    // CN43N มี Level ชัดเจน จึงใช้เฉพาะ WBS งานจริงที่มี REL/TECO/CLSD
+    if (parsed.type === 'cn43n') {
+      return (parsed.activeWorkWbsList && parsed.activeWorkWbsList.length)
+        ? parsed.activeWorkWbsList
+        : (parsed.workWbsList || []);
+    }
+
+    // ZPSR048/ZPSR055 มีสถานะ SAP ในรายงาน ให้กรอง CRTD-only/PREL-only ออก
+    if ((parsed.type === 'zpsr048' || parsed.type === 'zpsr055') && parsed.activeWbsList && parsed.activeWbsList.length) {
+      return parsed.activeWbsList;
+    }
+
+    // CN52N โดยมากไม่มี SAP Status ในแต่ละบรรทัด จึงแสดง WBS ที่พบทั้งหมดเป็นข้อมูลพัสดุ
+    if (parsed.type === 'cn52n') {
+      return parsed.uniqueWbs || [];
+    }
+
+    return (parsed.workWbsList && parsed.workWbsList.length) ? parsed.workWbsList : (parsed.uniqueWbs || []);
   }
 
   function primaryWbsCount(parsed) {
-    if (!parsed) return 0;
-    // CN43N เป็นรายงานแบบ hierarchy: มี WBS แม่/ระดับ 1-2 และ WBS งานจริงปนกัน
-    // จำนวนที่ใช้เทียบกับ Dashboard ให้ใช้ WBS งานจริงเท่านั้น เพื่อไม่ให้นับเกิน
-    if (parsed.type === 'cn43n' && parsed.workWbs > 0) return parsed.workWbs;
-    return parsed.workWbs > 0 ? parsed.workWbs : parsed.uniqueWbs.length;
+    return eligibleWbsList(parsed).length;
   }
 
   function primaryWbsLabel(parsed) {
     if (!parsed) return 'ยังไม่ตรวจ';
-    if (parsed.type === 'cn43n') {
-      return `${parsed.workWbs} งานจริง / ${parsed.parentWbs} แม่ / รวม ${parsed.uniqueWbs.length}`;
+    const active = parsed.activeWbsList ? parsed.activeWbsList.length : 0;
+    const excluded = parsed.inactiveExcludedWbsList ? parsed.inactiveExcludedWbsList.length : 0;
+    if (parsed.type === 'cn52n') {
+      return `${parsed.uniqueWbs.length} WBS พัสดุ / ${parsed.workWbs} งานจริง / ${parsed.parentWbs} แม่`;
     }
-    return `${parsed.workWbs} งานจริง / ${parsed.parentWbs} แม่ / รวม ${parsed.uniqueWbs.length}`;
+    return `${primaryWbsCount(parsed)} ใช้เทียบ / Active ${active} / ตัดออก ${excluded}`;
   }
 
   function detectDelimiter(text) {
@@ -172,9 +204,58 @@
     const allWbs = result.rows.map(r => r.wbs).filter(Boolean);
     result.wbsCounts = countMap(allWbs);
     result.uniqueWbs = Object.keys(result.wbsCounts).sort();
-    const cls = classifyWbsList(result.uniqueWbs);
-    result.parentWbs = cls.parent;
-    result.workWbs = cls.work;
+
+    const meta = {};
+    result.rows.forEach(r => {
+      if (!r.wbs) return;
+      if (!meta[r.wbs]) {
+        meta[r.wbs] = {
+          wbs: r.wbs,
+          types: new Set(),
+          statuses: new Set(),
+          hasStatus: false,
+          hasActive: false,
+          sampleStatus: '',
+          sampleRaw: ''
+        };
+      }
+      const m = meta[r.wbs];
+      m.types.add(r.wbsType || wbsLevel(r.wbs, r.level));
+      (r.statusTokens || extractSystemStatusTokens(r.status || r.systemStatus || r.raw)).forEach(st => {
+        m.statuses.add(st);
+        m.hasStatus = true;
+        if (ACTIVE_SYSTEM_STATUS.has(st)) m.hasActive = true;
+      });
+      if (!m.sampleStatus && (r.status || r.systemStatus)) m.sampleStatus = r.status || r.systemStatus;
+      if (!m.sampleRaw && r.raw) m.sampleRaw = r.raw;
+    });
+
+    result.wbsMeta = meta;
+    result.workWbsList = [];
+    result.parentWbsList = [];
+    result.activeWbsList = [];
+    result.activeWorkWbsList = [];
+    result.inactiveExcludedWbsList = [];
+    result.unknownStatusWorkWbsList = [];
+
+    result.uniqueWbs.forEach(w => {
+      const m = meta[w] || { types: new Set([wbsLevel(w)]), hasStatus: false, hasActive: false };
+      const isWork = m.types.has('WORK');
+      if (isWork) result.workWbsList.push(w);
+      else result.parentWbsList.push(w);
+
+      if (m.hasActive) result.activeWbsList.push(w);
+      if (isWork && m.hasActive) result.activeWorkWbsList.push(w);
+      if (isWork && m.hasStatus && !m.hasActive) result.inactiveExcludedWbsList.push(w);
+      if (isWork && !m.hasStatus) result.unknownStatusWorkWbsList.push(w);
+    });
+
+    result.parentWbs = result.parentWbsList.length;
+    result.workWbs = result.workWbsList.length;
+    result.activeWbs = result.activeWbsList.length;
+    result.activeWorkWbs = result.activeWorkWbsList.length;
+    result.inactiveExcludedWbs = result.inactiveExcludedWbsList.length;
+    result.unknownStatusWorkWbs = result.unknownStatusWorkWbsList.length;
     result.duplicateWbs = topCounts(result.wbsCounts, 20).filter(x => x[1] > 1);
     return result;
   }
@@ -201,6 +282,7 @@
       const level = cells[wi + 2] || cells[2] || '';
       const jobName = cells[wi + 3] || cells[3] || '';
       const statusCell = cells.find(c => /\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|PREL)\b/i.test(c)) || '';
+      const statusTokens = extractSystemStatusTokens(statusCell || line);
       const ownerCell = cells.find(c => /^นาย|^นาง|^น\.ส\.|^นางสาว/.test(c)) || '';
       const dates = (line.match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
 
@@ -208,11 +290,13 @@
       result.rows.push({
         rowNo: index + 1,
         wbs,
-        wbsType: wbsLevel(wbs),
+        wbsType: wbsLevel(wbs, level),
         projectDef,
         level,
         jobName,
         status: statusCell,
+        statusTokens,
+        activeBySap: statusTokens.some(t => ACTIVE_SYSTEM_STATUS.has(t)) ? 'YES' : 'NO',
         owner: ownerCell,
         startDate: dates[0] || '',
         raw: line,
@@ -220,7 +304,7 @@
       });
     });
 
-    result.notes.push('CN43N V3: จำนวนหลักบนการ์ดใช้ WBS งานจริงเท่านั้น ไม่นับ WBS แม่/หัวโครงการ');
+    result.notes.push('CN43N V4: ใช้ Level จาก CN43N แยก WBS งานจริง และกรองเฉพาะงานที่มี REL/TECO/CLSD');
     return finalizeResult(result);
   }
 
@@ -236,6 +320,7 @@
       const cells = splitLine(line, delimiter);
       const nums = extractNumbers(line);
       const statusCell = cells.find(c => /\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|MSPT|PRC|SSAP)\b/i.test(c)) || '';
+      const statusTokens = extractSystemStatusTokens(statusCell || line);
       const descCandidate = cells.find(c => c && c !== wbs && /[ก-๙A-Z]/i.test(c) && !/\b(REL|TECO|CLSD|AVAC|BUDG|CNF|CRTD|ISBD|NTUP|SETC|MSPT|PRC|SSAP)\b/i.test(c) && !isLikelyWbs(c)) || '';
       result.rows.push({
         rowNo: index + 1,
@@ -243,6 +328,8 @@
         wbsType: wbsLevel(wbs),
         jobName: descCandidate,
         status: statusCell,
+        statusTokens,
+        activeBySap: statusTokens.some(t => ACTIVE_SYSTEM_STATUS.has(t)) ? 'YES' : 'NO',
         numberCount: nums.length,
         totalNumber: nums.reduce((a,b) => a + b, 0),
         lastNumber: nums.length ? nums[nums.length - 1] : null,
@@ -252,7 +339,7 @@
       });
     });
 
-    result.notes.push('ZPSR048 เป็น SAP List จึงใช้วิธีจับ WBS และตัวเลขจากบรรทัดข้อมูลจริงก่อน ยังไม่เขียนข้อมูลลง Sheet');
+    result.notes.push('ZPSR048 V4: กรอง WBS ที่มีแต่ CRTD/BUDG/AVAC/NTUP/SETC ออกจากจำนวนหลัก หากไม่มี REL/TECO/CLSD');
     return finalizeResult(result);
   }
 
@@ -286,6 +373,7 @@
       plant = afterMaterial.find(c => /^\d{3,4}$/.test(c)) || '';
       storage = afterMaterial.find(c => /^[A-Z]\d{3,4}$/i.test(c)) || '';
       const nums = extractNumbers(line);
+      const statusTokens = extractSystemStatusTokens(line);
 
       result.rows.push({
         rowNo: index + 1,
@@ -296,6 +384,8 @@
         materialName,
         plant,
         storage,
+        statusTokens,
+        activeBySap: statusTokens.some(t => ACTIVE_SYSTEM_STATUS.has(t)) ? 'YES' : '',
         numberCount: nums.length,
         raw: line,
         cells,
@@ -344,6 +434,8 @@
       const dates = (line.match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
       const times = (line.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) || []);
 
+      const statusTokens = rowSystemStatuses.slice();
+
       const record = {
         rowNo: index + 1,
         wbs: currentWbs,
@@ -351,6 +443,8 @@
         jobName: currentName,
         userStatus: rowUserStatuses.join(', '),
         systemStatus: rowSystemStatuses.join(', '),
+        statusTokens,
+        activeBySap: statusTokens.some(t => ACTIVE_SYSTEM_STATUS.has(t)) ? 'YES' : 'NO',
         date: dates[0] || '',
         time: times[0] || '',
         raw: line,
@@ -386,16 +480,16 @@
 
   function getPreviewColumns(type) {
     if (type === 'cn43n') return [
-      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['jobName','ชื่องาน'], ['status','สถานะ'], ['owner','ผู้รับผิดชอบ'], ['startDate','วันที่เริ่ม']
+      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['activeBySap','REL/TECO/CLSD'], ['jobName','ชื่องาน'], ['status','สถานะ'], ['owner','ผู้รับผิดชอบ'], ['startDate','วันที่เริ่ม']
     ];
     if (type === 'zpsr048') return [
-      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['status','สถานะ'], ['numberCount','จำนวนตัวเลข'], ['lastNumber','ตัวเลขท้ายบรรทัด'], ['jobName','ข้อความที่จับได้']
+      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['activeBySap','REL/TECO/CLSD'], ['status','สถานะ'], ['numberCount','จำนวนตัวเลข'], ['lastNumber','ตัวเลขท้ายบรรทัด'], ['jobName','ข้อความที่จับได้']
     ];
     if (type === 'cn52n') return [
       ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['network','Network'], ['materialCode','รหัสพัสดุ'], ['materialName','รายการพัสดุ'], ['plant','Plant'], ['storage','Storage']
     ];
     if (type === 'zpsr055') return [
-      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['jobName','ชื่องาน'], ['userStatus','User Status'], ['systemStatus','System Status'], ['date','วันที่'], ['time','เวลา']
+      ['rowNo','#'], ['wbs','WBS'], ['wbsType','ประเภท'], ['activeBySap','REL/TECO/CLSD'], ['jobName','ชื่องาน'], ['userStatus','User Status'], ['systemStatus','System Status'], ['date','วันที่'], ['time','เวลา']
     ];
     return [['rowNo','#'], ['wbs','WBS'], ['raw','Raw']];
   }
@@ -425,21 +519,32 @@
     const duplicateText = parsed.duplicateWbs && parsed.duplicateWbs.length
       ? parsed.duplicateWbs.slice(0, 8).map(x => `${x[0]} (${x[1]})`).join('\n')
       : '-';
+    const excludedText = parsed.inactiveExcludedWbsList && parsed.inactiveExcludedWbsList.length
+      ? parsed.inactiveExcludedWbsList.slice(0, 12).map(w => {
+          const meta = parsed.wbsMeta && parsed.wbsMeta[w];
+          const status = meta ? Array.from(meta.statuses || []).join(' ') : '';
+          return `${w}${status ? ' | ' + status : ''}`;
+        }).join('\n')
+      : '-';
     const notes = parsed.notes && parsed.notes.length ? `<p class="note">${escapeHtml(parsed.notes.join(' / '))}</p>` : '';
 
     return `
       <div class="preview-block">
-        <div class="preview-title">${TYPE_LABELS[type]} Preview V3</div>
+        <div class="preview-title">${TYPE_LABELS[type]} Preview V4</div>
         <div class="kv">
           <span>รูปแบบที่ตรวจพบ</span><span>${delimiterName(parsed.delimiter)}</span>
           <span>จำนวนบรรทัดทั้งหมด</span><span>${parsed.totalLines}</span>
           <span>จำนวนแถวข้อมูลจริง</span><span>${parsed.dataRows}</span>
           <span>จำนวนหลักที่ใช้เทียบ</span><span class="${primaryWbsCount(parsed) ? 'ok' : 'warn'}">${primaryWbsCount(parsed)}</span>
+          <span>WBS Active REL/TECO/CLSD</span><span class="ok">${parsed.activeWbs || 0}</span>
+          <span>WBS งานจริง + Active</span><span class="ok">${parsed.activeWorkWbs || 0}</span>
+          <span>WBS ถูกตัด: ยังไม่ REL/TECO/CLSD</span><span class="${parsed.inactiveExcludedWbs ? 'bad' : 'ok'}">${parsed.inactiveExcludedWbs || 0}</span>
           <span>WBS ไม่ซ้ำทั้งหมด</span><span>${parsed.uniqueWbs.length}</span>
           <span>WBS งานจริง</span><span>${parsed.workWbs}</span>
           <span>WBS แม่/หัวโครงการ</span><span>${parsed.parentWbs}</span>
           <span>WBS ซ้ำในรายงาน</span><span>${parsed.duplicateWbs.length ? parsed.duplicateWbs.length + ' รายการ' : '-'}</span>
-          <span>ตัวอย่าง WBS</span><span><pre>${escapeHtml(wbsSample)}</pre></span>
+          <span>ตัวอย่าง WBS ที่ใช้เทียบ</span><span><pre>${escapeHtml(renderList(eligibleWbsList(parsed), 12))}</pre></span>
+          <span>ตัวอย่าง WBS ถูกตัดออก</span><span><pre>${escapeHtml(excludedText)}</pre></span>
           <span>ตัวอย่าง WBS ซ้ำ</span><span><pre>${escapeHtml(duplicateText)}</pre></span>
         </div>
         ${extra}
@@ -450,11 +555,14 @@
 
   function summaryText(parsed, type) {
     const lines = [];
-    lines.push(`${TYPE_LABELS[type]} Preview V3`);
+    lines.push(`${TYPE_LABELS[type]} Preview V4`);
     lines.push(`- รูปแบบ: ${delimiterName(parsed.delimiter)}`);
     lines.push(`- จำนวนบรรทัดทั้งหมด: ${parsed.totalLines}`);
     lines.push(`- จำนวนแถวข้อมูลจริง: ${parsed.dataRows}`);
     lines.push(`- จำนวนหลักที่ใช้เทียบ: ${primaryWbsCount(parsed)}`);
+    lines.push(`- WBS Active REL/TECO/CLSD: ${parsed.activeWbs || 0}`);
+    lines.push(`- WBS งานจริง + Active: ${parsed.activeWorkWbs || 0}`);
+    lines.push(`- WBS ถูกตัดเพราะยังไม่ REL/TECO/CLSD: ${parsed.inactiveExcludedWbs || 0}`);
     lines.push(`- WBS ไม่ซ้ำทั้งหมด: ${parsed.uniqueWbs.length}`);
     lines.push(`- WBS งานจริง: ${parsed.workWbs}`);
     lines.push(`- WBS แม่/หัวโครงการ: ${parsed.parentWbs}`);
@@ -526,14 +634,9 @@
   }
 
   function compareWbsList(parsed) {
-    if (!parsed) return [];
-    if (parsed.type === 'cn43n') {
-      const workOnly = parsed.uniqueWbs.filter(w => wbsLevel(w) === 'WORK');
-      return workOnly.length ? workOnly : parsed.uniqueWbs;
-    }
-    // แหล่งอื่นใช้ WBS งานจริงถ้ามี เพื่อเทียบกับ CN43N ได้ตรงกว่า
-    const workOnly = parsed.uniqueWbs.filter(w => wbsLevel(w) === 'WORK');
-    return workOnly.length ? workOnly : parsed.uniqueWbs;
+    // V4: ใช้รายการเดียวกับจำนวนหลักที่ใช้เทียบ
+    // CN43N = WBS งานจริงที่ Active, ZPSR048/ZPSR055 = WBS ที่มี REL/TECO/CLSD, CN52N = WBS พัสดุที่พบ
+    return eligibleWbsList(parsed);
   }
 
   function buildCompare(parsedMap) {
@@ -568,7 +671,7 @@
     });
 
     const text = [
-      'SAP Clipboard Preview V3 - WBS Cross-check',
+      'SAP Clipboard Preview V4 - WBS Cross-check',
       `ฐานเทียบ: ${TYPE_LABELS[baseType]}`,
       `WBS รวมทุกแหล่ง: ${union.length}`,
       `WBS ที่พบครบทุกแหล่งที่วาง: ${allCommon.length}`,
