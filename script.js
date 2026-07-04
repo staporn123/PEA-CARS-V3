@@ -1,5 +1,5 @@
 /*
- * V5.3.4 FRONTEND AI: Material All + Pending Popup + AI Button
+ * V5.3.5 PERFORMANCE LITE STEP 1: Frontend Cache + AI Button
  =========================================================
    PEA CARS+ V4 Professional Edition - Turbo V6.2 Stable Filter Logic
    File: script.js
@@ -20,6 +20,162 @@ let activeDashboardFilter = "all";
 const detailCache = new Map();
 let assistantBusy = false;
 let projectAiBusy = false;
+
+
+// =========================================
+// V5.3.5 STEP 1: FRONT-END CACHE ONLY
+// ไม่แตะ Backend / Code.gs ใช้ข้อมูล action=init เดิม แล้วเก็บไว้ใน Browser ชั่วคราว
+// =========================================
+let lastInitLoadedFromFrontendCache = false;
+
+function isFrontendCacheEnabled_() {
+  return typeof CONFIG === "undefined" || CONFIG.FRONTEND_CACHE_ENABLED !== false;
+}
+
+function frontendCacheTtlMs_(type) {
+  if (type === "lazy" && typeof CONFIG !== "undefined" && CONFIG.FRONTEND_CACHE_LAZY_TTL_MS) {
+    return Number(CONFIG.FRONTEND_CACHE_LAZY_TTL_MS) || 180000;
+  }
+  if (typeof CONFIG !== "undefined" && CONFIG.FRONTEND_CACHE_TTL_MS) {
+    return Number(CONFIG.FRONTEND_CACHE_TTL_MS) || 180000;
+  }
+  return 180000;
+}
+
+function frontendCacheStorage_() {
+  try {
+    const storage = window.sessionStorage || window.localStorage;
+    const testKey = "PEA_CARS_CACHE_TEST";
+    storage.setItem(testKey, "1");
+    storage.removeItem(testKey);
+    return storage;
+  } catch (err) {
+    return null;
+  }
+}
+
+function frontendCacheBaseKey_() {
+  const prefix = (typeof CONFIG !== "undefined" && CONFIG.FRONTEND_CACHE_PREFIX) ? CONFIG.FRONTEND_CACHE_PREFIX : "PEA_CARS";
+  const version = (typeof CONFIG !== "undefined" && CONFIG.VERSION) ? CONFIG.VERSION : "dev";
+  const apiUrl = getApiUrl ? getApiUrl() : ((typeof CONFIG !== "undefined" && CONFIG.API_URL) ? CONFIG.API_URL : "");
+  let apiHash = 0;
+  for (let i = 0; i < apiUrl.length; i++) {
+    apiHash = ((apiHash << 5) - apiHash + apiUrl.charCodeAt(i)) | 0;
+  }
+  return prefix + "_" + version + "_" + Math.abs(apiHash);
+}
+
+function frontendCacheKey_(name) {
+  return frontendCacheBaseKey_() + "_" + String(name || "default");
+}
+
+function frontendCacheGet_(name, ttlMs) {
+  if (!isFrontendCacheEnabled_()) return null;
+  const storage = frontendCacheStorage_();
+  if (!storage) return null;
+
+  try {
+    const raw = storage.getItem(frontendCacheKey_(name));
+    if (!raw) return null;
+
+    const item = JSON.parse(raw);
+    const age = Date.now() - Number(item.createdAt || 0);
+    const ttl = Number(ttlMs || frontendCacheTtlMs_());
+
+    if (!item || !item.data || age < 0 || age > ttl) {
+      storage.removeItem(frontendCacheKey_(name));
+      return null;
+    }
+
+    return item.data;
+  } catch (err) {
+    return null;
+  }
+}
+
+function frontendCacheSet_(name, data) {
+  if (!isFrontendCacheEnabled_()) return;
+  const storage = frontendCacheStorage_();
+  if (!storage || !data) return;
+
+  try {
+    storage.setItem(frontendCacheKey_(name), JSON.stringify({
+      createdAt: Date.now(),
+      data: data
+    }));
+  } catch (err) {
+    // ถ้า storage เต็ม ให้ล้าง cache ของระบบนี้แล้วลองใหม่ 1 ครั้ง
+    try {
+      clearFrontendCache(false);
+      storage.setItem(frontendCacheKey_(name), JSON.stringify({
+        createdAt: Date.now(),
+        data: data
+      }));
+    } catch (err2) {
+      console.warn("Frontend cache skipped:", err2.message);
+    }
+  }
+}
+
+function clearFrontendCache(showLog) {
+  const storage = frontendCacheStorage_();
+  if (!storage) return;
+
+  const base = frontendCacheBaseKey_();
+  const keys = [];
+
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (key && key.indexOf(base) === 0) keys.push(key);
+  }
+
+  keys.forEach(function (key) {
+    storage.removeItem(key);
+  });
+
+  if (showLog !== false) {
+    console.log("PEA CARS+ frontend cache cleared:", keys.length, "items");
+  }
+}
+
+async function getInitDataWithFrontendCache_(forceRefresh) {
+  lastInitLoadedFromFrontendCache = false;
+
+  if (!forceRefresh) {
+    const cached = frontendCacheGet_("init", frontendCacheTtlMs_());
+    if (cached) {
+      lastInitLoadedFromFrontendCache = true;
+      cached.frontendCached = true;
+      cached.cacheSource = "browser-sessionStorage:init";
+      return cached;
+    }
+  }
+
+  const fresh = await apiAction("init");
+  frontendCacheSet_("init", fresh);
+  return fresh;
+}
+
+async function apiActionCached_(action, params, options) {
+  params = params || {};
+  options = options || {};
+
+  const cacheName = "api_" + action + "_" + JSON.stringify(params || {});
+  const ttlMs = options.ttlMs || frontendCacheTtlMs_(options.type || "lazy");
+
+  if (!options.forceRefresh) {
+    const cached = frontendCacheGet_(cacheName, ttlMs);
+    if (cached) return cached;
+  }
+
+  const fresh = await apiAction(action, params);
+  frontendCacheSet_(cacheName, fresh);
+  return fresh;
+}
+
+if (typeof window !== "undefined") {
+  window.clearFrontendCache = clearFrontendCache;
+}
 
 document.addEventListener("DOMContentLoaded", function () {
   injectDashboardFilterStyle();
@@ -254,8 +410,10 @@ function bindEvents() {
 
   const refreshBtn = document.getElementById("refreshBtn");
   if (refreshBtn) refreshBtn.addEventListener("click", function () {
+    // Refresh = ดึงข้อมูลสดจาก Backend และล้าง Browser Cache
     detailCache.clear();
-    loadAllData();
+    clearFrontendCache();
+    loadAllData({ forceRefresh: true });
   });
 
   const projectSearchBtn = document.getElementById("projectSearchBtn");
@@ -331,14 +489,16 @@ function showPage(page) {
   if (pageTitle) pageTitle.textContent = titleMap[page] || "Dashboard";
 }
 
-async function loadAllData() {
+async function loadAllData(options) {
+  options = options || {};
+
   try {
     setLoading(true);
     detailCache.clear();
 
     // TURBO V6: โหลดหน้าแรกด้วย action=init เพียงครั้งเดียว
     // init จะส่งเฉพาะ Dashboard + ACTIVE_PROJECT ไม่โหลด detail หนัก ๆ
-    const init = unwrapObject(await apiAction("init"));
+    const init = unwrapObject(await getInitDataWithFrontendCache_(!!options.forceRefresh));
 
     allProjects = init.projects || [];
     workQueue = init.workQueue || [];
@@ -362,8 +522,12 @@ async function loadAllData() {
     renderAlertCenter(alertCenter);
     renderLastUpdate();
 
+    if (lastInitLoadedFromFrontendCache) {
+      console.log("PEA CARS+ ใช้ข้อมูลหน้าแรกจาก Browser Cache");
+    }
+
     // โหลด Work Queue / Alert ตามหลังแบบ background ไม่บล็อก Dashboard
-    loadLazyDashboardLists();
+    loadLazyDashboardLists({ forceRefresh: !!options.forceRefresh });
 
   } catch (err) {
     console.error(err);
@@ -373,12 +537,14 @@ async function loadAllData() {
   }
 }
 
-async function loadLazyDashboardLists() {
+async function loadLazyDashboardLists(options) {
+  options = options || {};
+
   try {
     const results = await Promise.allSettled([
-      apiAction("workqueue"),
-      apiAction("alerts"),
-      apiAction("materialwaiting")
+      apiActionCached_("workqueue", {}, { type: "lazy", forceRefresh: !!options.forceRefresh }),
+      apiActionCached_("alerts", {}, { type: "lazy", forceRefresh: !!options.forceRefresh }),
+      apiActionCached_("materialwaiting", {}, { type: "lazy", forceRefresh: !!options.forceRefresh })
     ]);
 
     if (results[0].status === "fulfilled") {
@@ -2046,11 +2212,12 @@ async function saveDocumentChecklistFromModal(wbs) {
     }
 
     detailCache.delete(normalizeKey(wbs));
+    clearFrontendCache();
 
     alert("บันทึก Checklist สำเร็จ");
 
     closeModal();
-    await loadAllData();
+    await loadAllData({ forceRefresh: true });
 
   } catch (err) {
     console.error(err);
