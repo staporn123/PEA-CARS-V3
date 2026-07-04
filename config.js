@@ -7,19 +7,28 @@ const CONFIG = {
   // =========================================
   // Google Apps Script API URL
   // =========================================
-  API_URL: "https://script.google.com/macros/s/AKfycbytN6PDenSyJbcaJJL8ehxSgR8oV2weMnF1PsD5GUD5Pr7o9DYo4FoA6VlCAFs3pWPl/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbwjERkZ0PvI_fVqwKlzJOmTPcIK6iL-SIS0HlriDy8/dev",
 
   API_TIMEOUT: 60000,
 
   // =========================================
   // Application Information
   // =========================================
-  APP_NAME: "PEA CARS+ V5.3.4 AI Assistant",
-  VERSION: "5.3.4",
+  APP_NAME: "PEA CARS+ V5.3.5 Performance Lite",
+  VERSION: "5.3.5",
   COMPANY: "Provincial Electricity Authority",
   AUTHOR: "PEA NE1",
   TIMEZONE: "Asia/Bangkok",
   DATE_FORMAT: "dd/MM/yyyy",
+
+
+  // =========================================
+  // Front-end Cache (Performance Lite)
+  // =========================================
+  FRONTEND_CACHE_ENABLED: true,
+  FRONTEND_CACHE_TTL_MS: 180000,       // 3 นาที สำหรับข้อมูลหน้าแรก
+  FRONTEND_CACHE_LAZY_TTL_MS: 180000,  // 3 นาที สำหรับ workqueue/alerts/materialwaiting
+  FRONTEND_CACHE_PREFIX: "PEA_CARS_V535",
 
   // =========================================
   // Auto Refresh
