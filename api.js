@@ -74,6 +74,14 @@ class CarsAPI {
     return this.request("projects");
   }
 
+  static getInitLite(params = {}) {
+    return this.request("initlite", params);
+  }
+
+  static getProjectsPaged(params = {}) {
+    return this.request("projectspaged", params);
+  }
+
   static getProjectDetail(wbs) {
     return this.request("projectdetail", { wbs });
   }
