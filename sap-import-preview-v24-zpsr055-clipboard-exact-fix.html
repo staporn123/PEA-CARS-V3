@@ -282,7 +282,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V23-ZPSR055-CLIPBOARD-RAW-EXACT';
+  const LAB_VERSION = 'V24-ZPSR055-CLIPBOARD-EXACT-FIX';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -1647,6 +1647,115 @@ window.addEventListener('error', function(e){
     return [header].concat(matrix || []).map(row => padRow_(row, 12).slice(0, 12).join('\t')).join('\n');
   }
 
+  function isSapUserCode_(value) {
+    return /^E[A-Z0-9]{5,}$/i.test(String(value == null ? '' : value).trim());
+  }
+
+  function isSapAction_(value) {
+    return /^(Active|Inactive)$/i.test(String(value == null ? '' : value).trim());
+  }
+
+  function isSapDate_(value) {
+    return /^\d{1,2}[./]\d{1,2}[./]\d{4}$/.test(String(value == null ? '' : value).trim());
+  }
+
+  function isSapTime_(value) {
+    return /^\d{1,2}:\d{2}(?::\d{2})?$/.test(String(value == null ? '' : value).trim());
+  }
+
+  function isSystemStatusOnly_(value) {
+    const s = String(value == null ? '' : value).trim().toUpperCase();
+    return KNOWN_SYSTEM_STATUS.has(s);
+  }
+
+  function zpsr055CellsToExactRow_(cells, keepLeadingWbs) {
+    // V24: แปลงข้อมูล ZPSR055 จาก SAP Clipboard แบบ fixed-width/space ให้ลง A:L ตามหัวตารางจริง
+    // ไม่ตัด User ออกจาก F/K และไม่บีบช่องว่างจนคอลัมน์เลื่อน
+    const c = (cells || []).map(cleanSapCell_).filter(x => x !== '');
+    const out = ['', '', '', '', '', '', '', '', '', '', '', ''];
+    if (!c.length) return out;
+
+    let p = 0;
+    const firstWbs = normalizeWbs(c[p]);
+    if (firstWbs && isLikelyWbs(c[p])) {
+      out[0] = firstWbs;
+      p++;
+      // คำอธิบายอยู่หลัง WBS และอยู่ก่อน status/date/time/user/action
+      if (
+        c[p] &&
+        !isUserStatusOnly_(c[p]) &&
+        !isSystemStatusOnly_(c[p]) &&
+        !isSapDate_(c[p]) &&
+        !isSapTime_(c[p]) &&
+        !isSapUserCode_(c[p]) &&
+        !isSapAction_(c[p])
+      ) {
+        out[1] = c[p];
+        p++;
+      }
+    } else if (keepLeadingWbs && firstWbs && isLikelyWbs(c[p])) {
+      out[0] = firstWbs;
+      p++;
+    }
+
+    const userIdx = c.findIndex((x, i) => i >= p && isUserStatusOnly_(x));
+    if (userIdx >= 0) {
+      out[2] = c[userIdx];
+      let u = userIdx + 1;
+      if (isSapDate_(c[u])) { out[3] = c[u]; u++; }
+      if (isSapTime_(c[u])) { out[4] = c[u]; u++; }
+      if (isSapUserCode_(c[u])) { out[5] = c[u]; u++; }
+      if (isSapAction_(c[u])) { out[6] = c[u]; u++; }
+      p = u;
+    }
+
+    const sysIdx = c.findIndex((x, i) => i >= p && isSystemStatusOnly_(x));
+    if (sysIdx >= 0) {
+      out[7] = c[sysIdx];
+      let s = sysIdx + 1;
+      if (isSapDate_(c[s])) { out[8] = c[s]; s++; }
+      if (isSapTime_(c[s])) { out[9] = c[s]; s++; }
+      if (isSapUserCode_(c[s])) { out[10] = c[s]; s++; }
+      if (isSapAction_(c[s])) { out[11] = c[s]; s++; }
+    }
+
+    return out;
+  }
+
+  function textLooseZpsr055ToMatrix_(text) {
+    // fallback สำหรับกรณี SAP GUI ส่ง Clipboard เป็น fixed-width text ไม่มี tab
+    const lines = normalizeText(text).split('\n');
+    const matrix = [];
+    lines.forEach(line => {
+      const raw = String(line || '');
+      if (isNoiseLine(raw)) return;
+      if (isZpsr055HeaderRow_([raw])) return;
+      if (/รายงาน|โปรแกรม|ไดออนต์|วันที่\s*:|เวลา\s*:|หน้าที่\s*:/.test(raw)) return;
+      const cells = raw.trim().split(/\s{2,}/).map(cleanSapCell_).filter(Boolean);
+      if (!cells.length) return;
+      const row = zpsr055CellsToExactRow_(cells, false);
+      if (row.slice(0, 12).some(x => String(x || '').trim() !== '')) matrix.push(row);
+    });
+    return matrix.length ? matrix : null;
+  }
+
+  function htmlLooseToMatrix_(html) {
+    // SAP GUI บางครั้งให้ HTML ที่ไม่ใช่ table จริง จึงไม่ใช้เป็นแหล่งหลัก
+    return null;
+  }
+
+  function chooseBestZpsr055Matrix_(candidates) {
+    const valid = (candidates || []).filter(x => x && x.matrix && x.matrix.length);
+    if (!valid.length) return null;
+    valid.forEach(x => {
+      const q = zpsr055MatrixQuality_(x.matrix);
+      x.quality = q;
+      x.score = (q.rows || 0) + ((q.userStatusUserCount || 0) + (q.systemStatusUserCount || 0)) * 20 + ((q.userActionCount || 0) + (q.systemActionCount || 0)) * 5;
+    });
+    valid.sort((a, b) => b.score - a.score);
+    return valid[0];
+  }
+
   function zpsr055MatrixQuality_(matrix) {
     const rows = matrix || [];
     return {
@@ -1698,12 +1807,19 @@ window.addEventListener('error', function(e){
       const html = cd.getData('text/html') || '';
       const plain = cd.getData('text/plain') || '';
       const rtf = cd.getData('text/rtf') || '';
-      const htmlMatrix = htmlToMatrix_(html) || htmlLooseToMatrix_(html);
-      const tabMatrix = textToTabMatrix_(plain) || textLooseZpsr055ToMatrix_(plain);
-      const rtfMatrix = textToTabMatrix_(rtf) || null;
-      rawClipboardMatrices.zpsr055 = htmlMatrix || tabMatrix || rtfMatrix || null;
+
+      // V24: เลือกแหล่ง Clipboard ที่รักษา F/K User ได้ดีที่สุด ไม่บังคับใช้ HTML ก่อน
+      const candidates = [
+        { source: 'text/plain tab', matrix: textToTabMatrix_(plain) },
+        { source: 'text/plain fixed-width', matrix: textLooseZpsr055ToMatrix_(plain) },
+        { source: 'text/html table', matrix: htmlToMatrix_(html) },
+        { source: 'text/rtf tab', matrix: textToTabMatrix_(rtf) }
+      ];
+      const best = chooseBestZpsr055Matrix_(candidates);
+      rawClipboardMatrices.zpsr055 = best ? best.matrix : null;
+
       if (rawClipboardMatrices.zpsr055) {
-        console.log('ZPSR055 clipboard matrix captured', rawClipboardMatrices.zpsr055.length, 'rows', 'types=', Array.from(cd.types || []));
+        console.log('ZPSR055 clipboard matrix captured', rawClipboardMatrices.zpsr055.length, 'rows', 'source=', best.source, 'quality=', best.quality, 'types=', Array.from(cd.types || []));
       } else {
         console.warn('ZPSR055 clipboard matrix not captured', Array.from(cd.types || []));
       }
@@ -1711,7 +1827,7 @@ window.addEventListener('error', function(e){
       const status = $('zpsr055FileStatus');
       if (status && rawClipboardMatrices.zpsr055) {
         const q = zpsr055MatrixQuality_(rawClipboardMatrices.zpsr055);
-        status.textContent = `จับ Clipboard ZPSR055 ได้ ${q.rows} แถว / F(User ผู้ใช้)=${q.userStatusUserCount} / K(User ระบบ)=${q.systemStatusUserCount}`;
+        status.textContent = `จับ Clipboard ZPSR055 ได้ ${q.rows} แถว จาก ${best.source} / F(User ผู้ใช้)=${q.userStatusUserCount} / K(User ระบบ)=${q.systemStatusUserCount}`;
       }
     } catch (err) {
       console.warn('captureZpsr055Clipboard failed', err);
@@ -1720,29 +1836,25 @@ window.addEventListener('error', function(e){
   }
 
   function normalizeZpsr055RawMirrorRow_(row) {
-    // V17: ส่งเข้า SAP_STAGING_ZPSR055 ให้ "เหมือน ZPSR055_Raw เดิม" มากที่สุด
-    // หลักสำคัญ:
-    // 1) ถ้าแถวต้นฉบับเป็น Tab-separated ให้ใช้ช่องจากต้นฉบับ 12 คอลัมน์แรกทันที
-    // 2) ไม่เติม WBS/คำอธิบายซ้ำในแถวลูก เพราะ ZPSR055_Raw เดิมปล่อยคอลัมน์ A:B ว่างในแถวถัด ๆ ไป
-    // 3) ถ้าไม่ใช่ Tab จึงค่อย fallback จาก parser เพื่อกันข้อมูลเลื่อน
+    // V24: ส่งเข้า SAP_STAGING_ZPSR055 แบบ A:L ตรงตามหัวตาราง SAP
+    // กรณีมี tab จาก Clipboard ให้ใช้ tab เดิม 12 ช่องแรกทันที
     const rawTabCells = (row && Array.isArray(row.rawTabCells)) ? row.rawTabCells.slice() : [];
-
-    // กรณีข้อมูลมาจาก SAP/Google Sheet Clipboard ปกติ จะมี tab และควร mirror ตรงนี้
     if (rawTabCells.length >= 2) {
-      return padRow_(rawTabCells, 12);
+      return padRow_(rawTabCells.map(cleanSapCell_), 12).slice(0, 12);
     }
 
     const cells = (row && row.cells) ? row.cells.slice() : [];
+    const mapped = zpsr055CellsToExactRow_(cells, false);
+
+    // ถ้าแปลงได้ ให้ใช้ผลแปลงนี้ เพื่อไม่ให้ F/K User หาย
+    if (mapped.slice(2, 12).some(x => String(x || '').trim() !== '')) {
+      return mapped;
+    }
+
+    // fallback สุดท้ายเท่านั้น
     const raw = String(row && row.raw || '');
     const dates = (raw.match(/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g) || []);
     const times = (raw.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) || []);
-
-    // ถ้า split แล้วได้ 12 คอลัมน์ขึ้นไป ให้ใช้ cell เดิม ไม่เติม WBS ซ้ำ
-    if (cells.length >= 12 && (isLikelyWbs(cells[0]) || cells[0] === '')) {
-      return padRow_(cells, 12);
-    }
-
-    // fallback เฉพาะกรณี copy มาเป็น text ธรรมดาที่ไม่มี tab จนรักษาช่องว่างเดิมไม่ได้
     const wbs = row && row.rawWbsCell ? row.rawWbsCell : (row && row.wbs ? row.wbs : '');
     const desc = row && row.rawDescriptionCell ? row.rawDescriptionCell : (row && row.jobName ? row.jobName : '');
     const userStatus = row && row.userStatus ? row.userStatus : '';
@@ -1963,12 +2075,22 @@ window.addEventListener('error', function(e){
     if (zpsr055Text) {
       zpsr055Text.addEventListener('paste', captureZpsr055Clipboard_);
       zpsr055Text.addEventListener('input', () => {
-        // ถ้าผู้ใช้แก้ข้อความเองหลัง paste ให้ fallback เป็น tab matrix จาก textarea ถ้ามี
+        // V24: ถ้าผู้ใช้แก้ข้อความเองหลัง paste ให้เลือก matrix ที่รักษา F/K ได้ดีที่สุดจาก textarea
         const tabMatrix = textToTabMatrix_(zpsr055Text.value || '');
-        if (tabMatrix) rawClipboardMatrices.zpsr055 = tabMatrix;
+        const looseMatrix = textLooseZpsr055ToMatrix_(zpsr055Text.value || '');
+        const best = chooseBestZpsr055Matrix_([
+          { source: 'textarea tab', matrix: tabMatrix },
+          { source: 'textarea fixed-width', matrix: looseMatrix }
+        ]);
+        if (best) rawClipboardMatrices.zpsr055 = best.matrix;
         xlsxZpsr055Matrix = null;
         const status = $('zpsr055FileStatus');
-        if (status) status.textContent = 'ใช้ข้อมูลจาก Clipboard/ช่องวาง ZPSR055 โดยตรง';
+        if (status) {
+          const q = best ? zpsr055MatrixQuality_(best.matrix) : { rows: 0, userStatusUserCount: 0, systemStatusUserCount: 0 };
+          status.textContent = best
+            ? `ใช้ข้อมูลจาก ${best.source}: ${q.rows} แถว / F=${q.userStatusUserCount} / K=${q.systemStatusUserCount}`
+            : 'ใช้ข้อมูลจาก Clipboard/ช่องวาง ZPSR055 โดยตรง';
+        }
       });
     }
   }
@@ -1977,7 +2099,7 @@ window.addEventListener('error', function(e){
 })();
 
 try {
-  window.PEA_CARS_SAP_LAB_LOADED = 'V23_CLIPBOARD_REPLACE_CURRENT_FIXED';
+  window.PEA_CARS_SAP_LAB_LOADED = 'V24_ZPSR055_CLIPBOARD_EXACT_FIX';
 } catch (_) {}
 
 </script>
