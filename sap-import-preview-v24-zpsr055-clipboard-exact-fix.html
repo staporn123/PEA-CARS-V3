@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V25 ZPSR055 Clipboard All Raw</title>
+  <title>PEA CARS+ SAP Clipboard Preview V27 Excel Fallback + ZPSR055 Pipe Exact Preserve</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
 :root {
   --bg: #060b18;
@@ -48,7 +49,7 @@ body {
 .eyebrow { color: var(--brand2); font-weight: 900; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
 h2 { font-size: 32px; margin: 6px 0; }
 .page-header p, .result-head p, .card-head p { color: var(--muted); margin: 0; line-height: 1.6; }
-.header-actions, .card-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.header-actions, .card-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items:center; }
 .btn { border: 0; border-radius: 12px; padding: 11px 16px; color: white; cursor: pointer; font-weight: 900; background: linear-gradient(135deg, var(--brand), var(--brand2)); box-shadow: 0 12px 30px rgba(37,194,255,.14); }
 .btn:hover { filter: brightness(1.08); }
 .btn-secondary { background: #18243b; border: 1px solid var(--line); box-shadow:none; }
@@ -102,6 +103,15 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
 .diff-card h4 { margin:0 0 8px; }
 .diff-list { max-height: 180px; overflow:auto; white-space:pre-wrap; color:#d8e6ff; font-family:Consolas, monospace; font-size:12px; }
 @media (max-width: 1200px) { .app-shell { grid-template-columns: 1fr; } .sidebar { position: relative; height: auto; } .work-area { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: repeat(2, 1fr); } .result-panel { position:relative; top:auto; } }
+
+.file-fallback { margin-top: 10px; display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px; border:1px dashed rgba(37,194,255,.35); border-radius:14px; background:rgba(37,194,255,.055); }
+.file-fallback label { font-weight:900; color:#cfeeff; }
+.file-fallback input[type="file"] { max-width: 100%; color: var(--muted); }
+.file-status { flex:1 1 260px; min-width:220px; color: var(--muted); font-size:12px; line-height:1.45; }
+.file-status.ok { color:#bbf7d0; }
+.file-status.warn { color:#fde68a; }
+.file-status.bad { color:#fecaca; }
+
 @media (max-width: 680px) { .main { padding: 18px; } .page-header { flex-direction: column; } .summary-grid, .diff-grid { grid-template-columns: 1fr; } .kv { grid-template-columns: 1fr; } }
 
 
@@ -126,12 +136,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V25 ZPSR055 Clipboard All Raw</p>
+          <p>SAP Clipboard Lab V27 Excel Fallback + ZPSR055 Pipe Exact</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V25 ZPSR055 Clipboard All Raw</div>
+        <div class="safe-title">โหมดทดลอง V27 Excel Fallback + ZPSR055 Pipe Exact</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,8 +164,8 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V25 ZPSR055 Clipboard All Raw</h2>
-          <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ZPSR055 จะยึดข้อมูลจาก Clipboard ทั้งหมดแบบ Raw A:L ไม่กรองด้วยฐาน CN43N เพื่อให้ตรงตาม SAP ที่คัดลอกมา โดยยังไม่บันทึกข้อมูลจริง</p>
+          <h2>SAP Clipboard Import ทดลอง V27 Excel Fallback + ZPSR055 Pipe Exact</h2>
+          <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง หรือแนบไฟล์ Excel/CSV เป็นทางสำรองได้ทุกช่อง ระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และ ZPSR055 จะยึดข้อมูลจาก Clipboard/ไฟล์แบบ Raw A:L เพื่อให้ตรงตาม SAP โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
           <button class="btn btn-secondary" id="btnPreviewAll">ตรวจสอบทั้งหมด</button>
@@ -207,6 +217,11 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
               <button class="btn" data-preview="cn43n">ตรวจสอบ CN43N</button>
               <button class="btn btn-ghost" data-clear="cn43n">ล้างช่องนี้</button>
             </div>
+            <div class="file-fallback">
+              <label for="file-cn43n">แนบไฟล์ CN43N</label>
+              <input id="file-cn43n" data-file-type="cn43n" type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" />
+              <span class="file-status" id="fileStatus-cn43n">ทางสำรอง: เลือกไฟล์ Excel/CSV/TXT แล้วระบบจะเติมลงช่องนี้ให้</span>
+            </div>
           </article>
 
           <article class="paste-card" id="zpsr048">
@@ -218,6 +233,11 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
             <div class="card-actions">
               <button class="btn" data-preview="zpsr048">ตรวจสอบ ZPSR048</button>
               <button class="btn btn-ghost" data-clear="zpsr048">ล้างช่องนี้</button>
+            </div>
+            <div class="file-fallback">
+              <label for="file-zpsr048">แนบไฟล์ ZPSR048</label>
+              <input id="file-zpsr048" data-file-type="zpsr048" type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" />
+              <span class="file-status" id="fileStatus-zpsr048">ทางสำรอง: เลือกไฟล์ Excel/CSV/TXT แล้วระบบจะเติมลงช่องนี้ให้</span>
             </div>
           </article>
 
@@ -231,6 +251,11 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
               <button class="btn" data-preview="cn52n">ตรวจสอบ CN52N</button>
               <button class="btn btn-ghost" data-clear="cn52n">ล้างช่องนี้</button>
             </div>
+            <div class="file-fallback">
+              <label for="file-cn52n">แนบไฟล์ CN52N</label>
+              <input id="file-cn52n" data-file-type="cn52n" type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" />
+              <span class="file-status" id="fileStatus-cn52n">ทางสำรอง: เลือกไฟล์ Excel/CSV/TXT แล้วระบบจะเติมลงช่องนี้ให้</span>
+            </div>
           </article>
 
           <article class="paste-card" id="zpsr055">
@@ -240,12 +265,17 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
             </div>
             <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก SAP ที่นี่ โดยคัดลอกจาก SAP แล้ว Ctrl+V ลงช่องนี้เท่านั้น"></textarea>
             <div class="note" style="margin-top:10px; padding:10px; border:1px dashed rgba(124,92,255,.45); border-radius:14px;">
-              <strong>V25 สำหรับ ZPSR055:</strong> ยึด Clipboard จาก SAP ทั้งหมดแบบ Raw A:L ไม่กรองด้วย CN43N ไม่ใช้ไฟล์ Excel และไม่ต้อง Export ไฟล์
-              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">โหมด Clipboard All Raw: คัดลอกจาก SAP แล้ววางลงช่อง ZPSR055 ระบบจะส่งทุกแถว A:L เข้า Staging ตาม Clipboard</div>
+              <strong>V27 สำหรับ ZPSR055:</strong> ยึด Clipboard จาก SAP ทั้งหมดแบบ Raw A:L ไม่กรองด้วย CN43N และมีช่องแนบ Excel/CSV เป็นทางสำรองถ้า Clipboard เพี้ยน
+              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">โหมด Pipe Exact Preserve + Excel Fallback: คัดลอกจาก SAP แล้ววางลงช่อง ZPSR055 หรือแนบ Excel/CSV ทางสำรอง ระบบจะรักษาช่องว่างจากเครื่องหมาย | เพื่อไม่ให้คอลัมน์เลื่อน</div>
             </div>
             <div class="card-actions">
               <button class="btn" data-preview="zpsr055">ตรวจสอบ ZPSR055</button>
               <button class="btn btn-ghost" data-clear="zpsr055">ล้างช่องนี้</button>
+            </div>
+            <div class="file-fallback">
+              <label for="file-zpsr055">แนบไฟล์ ZPSR055</label>
+              <input id="file-zpsr055" data-file-type="zpsr055" type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" />
+              <span class="file-status" id="fileStatus-zpsr055">ทางสำรอง: ถ้า Clipboard เพี้ยน ให้แนบ Excel/CSV/TXT เพื่อรักษาคอลัมน์ A:L</span>
             </div>
           </article>
         </div>
@@ -282,7 +312,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V25-ZPSR055-CLIPBOARD-ALL-RAW-NO-CN43N-FILTER';
+  const LAB_VERSION = 'V27-EXCEL-FALLBACK-ZPSR055-PIPE-EXACT';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -928,7 +958,7 @@ window.addEventListener('error', function(e){
     result.userStatusTotal = userStatuses.length;
     result.systemStatusTotal = systemStatuses.length;
     result.perWbs = perWbs;
-    result.notes.push('ZPSR055 V25: ส่งเข้า Staging จาก Clipboard ทั้งหมดแบบ Raw A:L ไม่กรองด้วย CN43N');
+    result.notes.push('ZPSR055 V26: ส่งเข้า Staging จาก Clipboard แบบ Pipe Exact Preserve ไม่กรองด้วย CN43N');
     return finalizeResult(result);
   }
 
@@ -1546,7 +1576,7 @@ window.addEventListener('error', function(e){
       const row = padRow_((rawRow || []).map(cleanSapCell_), 12).slice(0, 12);
       if (!isZpsr055DataLikeRow_(row)) return;
 
-      // V25: ZPSR055 ยึด Clipboard ทั้งหมดแบบ Raw A:L
+      // V26: ZPSR055 ยึด Clipboard แบบ Pipe Exact Preserve
       // ไม่กรองด้วย CN43N, ไม่เติม WBS, ไม่ rebuild คอลัมน์ F/K/G/L
       // ถ้า SAP แสดง WBS/คำอธิบายว่างในแถวต่อเนื่อง ก็ปล่อยว่างตาม Clipboard
       out.push(row);
@@ -1716,6 +1746,66 @@ window.addEventListener('error', function(e){
     return out;
   }
 
+  function textToPipeMatrixPreserve_(text) {
+    // V26: สำหรับ SAP GUI List ที่คัดลอกมาเป็นตารางมีเครื่องหมาย |
+    // หลักสำคัญคือ split ด้วย | แต่ห้าม filter ช่องว่างภายในแถว
+    // เพื่อรักษาคอลัมน์ว่าง A:L ให้ตรงกับ SAP_STAGING_ZPSR055
+    const lines = normalizeText(text).split('\n');
+    const matrix = [];
+    let passedHeader = false;
+
+    lines.forEach(line => {
+      const raw = String(line || '');
+      if (!raw || raw.indexOf('|') < 0) return;
+
+      const compact = raw.replace(/[|\-_=\s]/g, '');
+      if (!compact) return;
+
+      let cells = raw.split('|').map(cleanSapCell_);
+
+      // ตัดเฉพาะเส้นกรอบนอกซ้าย/ขวาเท่านั้น ห้ามตัดช่องว่างภายใน
+      if (cells.length && cells[0] === '') cells.shift();
+      if (cells.length && cells[cells.length - 1] === '') cells.pop();
+
+      if (!cells.length) return;
+      if (cells.every(c => !String(c || '').trim())) return;
+      if (cells.every(c => /^[\-_=]+$/.test(String(c || '').replace(/\s/g, '')))) return;
+
+      const joined = cells.join(' ');
+
+      if (isZpsr055HeaderRow_(cells)) {
+        passedHeader = true;
+        return;
+      }
+
+      // ตัดหัวรายงาน/ข้อมูลผู้ใช้ด้านบน แต่ไม่ตัดแถวข้อมูลจริง
+      if (/รายงาน|โปรแกรม|ไคลเอนท์|วันที่\s*:|เวลา\s*:|หน้าที่\s*:/.test(joined) && !findWbsInText(joined)) return;
+
+      // ถ้าแถวมีจำนวนคอลัมน์เกิน 12 จากส่วนอื่นของ SAP ให้พยายามหา column WBS เป็นจุดเริ่ม
+      let row = cells.slice();
+      const wbsIdx = row.findIndex(c => isLikelyWbs(c) || !!findWbsInText(c));
+      const headerLooksPassed = passedHeader || row.some(c => isUserStatusOnly_(c) || isSystemStatusOnly_(c) || isSapDate_(c) || isSapTime_(c) || isSapUserCode_(c) || isSapAction_(c));
+
+      if (wbsIdx > 0 && row.length - wbsIdx >= 8) {
+        // กรณีมีคอลัมน์นำหน้าแปลก ๆ ก่อน WBS ให้เริ่มที่ WBS
+        row = row.slice(wbsIdx);
+      }
+
+      row = padRow_(row, 12).slice(0, 12);
+
+      // ป้องกันเคส parser เลื่อน: ถ้า A ไม่ใช่ WBS/ว่าง แต่มีสถานะหรือวันที่อยู่ A ให้ยังไม่ถือเป็นแถว exact
+      // ยกเว้นแถวต่อเนื่องที่ A/B ว่างจริงจาก SAP
+      const a = String(row[0] || '').trim();
+      const aLooksShifted = a && !isLikelyWbs(a) && !findWbsInText(a) && (isUserStatusOnly_(a) || isSystemStatusOnly_(a) || isSapDate_(a) || isSapTime_(a) || isSapAction_(a) || isSapUserCode_(a));
+      if (aLooksShifted) return;
+
+      if (!isZpsr055DataLikeRow_(row)) return;
+      matrix.push(row);
+    });
+
+    return matrix.length ? matrix : null;
+  }
+
   function textLooseZpsr055ToMatrix_(text) {
     // fallback สำหรับกรณี SAP GUI ส่ง Clipboard เป็น fixed-width text ไม่มี tab
     const lines = normalizeText(text).split('\n');
@@ -1743,8 +1833,15 @@ window.addEventListener('error', function(e){
     if (!valid.length) return null;
     valid.forEach(x => {
       const q = zpsr055MatrixQuality_(x.matrix);
+      const exactGood = (q.rows || 0) > 0 && (q.shiftRiskCount || 0) === 0;
       x.quality = q;
-      x.score = (q.rows || 0) + ((q.userStatusUserCount || 0) + (q.systemStatusUserCount || 0)) * 20 + ((q.userActionCount || 0) + (q.systemActionCount || 0)) * 5;
+      // V26: ให้คะแนนรูปแบบที่รักษา pipe/tab exact สูงกว่า fixed-width เดาเอง
+      const sourceBonus = /pipe preserve/i.test(x.source) ? 200000 : (/tab|html/i.test(x.source) ? 100000 : 0);
+      const exactBonus = exactGood ? 50000 : 0;
+      const userScore = ((q.userStatusUserCount || 0) + (q.systemStatusUserCount || 0)) * 40;
+      const actionScore = ((q.userActionCount || 0) + (q.systemActionCount || 0)) * 10;
+      const penalty = (q.shiftRiskCount || 0) * 100000;
+      x.score = sourceBonus + exactBonus + (q.rows || 0) + userScore + actionScore - penalty;
     });
     valid.sort((a, b) => b.score - a.score);
     return valid[0];
@@ -1752,13 +1849,126 @@ window.addEventListener('error', function(e){
 
   function zpsr055MatrixQuality_(matrix) {
     const rows = matrix || [];
+    const shiftRiskCount = rows.filter(r => {
+      const a = String((r || [])[0] || '').trim();
+      return a && !isLikelyWbs(a) && !findWbsInText(a) && (isUserStatusOnly_(a) || isSystemStatusOnly_(a) || isSapDate_(a) || isSapTime_(a) || isSapAction_(a) || isSapUserCode_(a));
+    }).length;
     return {
       rows: rows.length,
       userStatusUserCount: rows.filter(r => String((r || [])[5] || '').trim()).length,
       systemStatusUserCount: rows.filter(r => String((r || [])[10] || '').trim()).length,
       userActionCount: rows.filter(r => String((r || [])[6] || '').trim()).length,
-      systemActionCount: rows.filter(r => String((r || [])[11] || '').trim()).length
+      systemActionCount: rows.filter(r => String((r || [])[11] || '').trim()).length,
+      shiftRiskCount: shiftRiskCount
     };
+  }
+
+
+  function fileStatus_(type, message, cls) {
+    const el = $('fileStatus-' + type);
+    if (!el) return;
+    el.className = 'file-status' + (cls ? ' ' + cls : '');
+    el.textContent = message || '';
+  }
+
+  function normalizeGenericExcelCell_(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/\r?\n/g, ' ').trim();
+  }
+
+  function genericMatrixToTsv_(matrix) {
+    return (matrix || [])
+      .map(row => (row || []).map(normalizeGenericExcelCell_).join('\t'))
+      .join('\n');
+  }
+
+  function readWorksheetMatrix_(sheet) {
+    if (!sheet || !sheet['!ref']) return [];
+    const matrix = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+      blankrows: false
+    });
+    return (matrix || []).map(row => (row || []).map(normalizeGenericExcelCell_));
+  }
+
+  function chooseWorkbookSheet_(workbook, type) {
+    const names = workbook && workbook.SheetNames ? workbook.SheetNames : [];
+    if (!names.length) return '';
+    const target = String(TYPE_LABELS[type] || type || '').toUpperCase();
+    const found = names.find(n => String(n || '').toUpperCase().indexOf(target) !== -1);
+    return found || names[0];
+  }
+
+  async function loadSapDataFile_(type, file) {
+    if (!file || !type) return;
+    const fileName = file.name || '';
+    const lower = fileName.toLowerCase();
+    fileStatus_(type, 'กำลังอ่านไฟล์ ' + fileName + ' ...', 'warn');
+
+    try {
+      delete parsedCache[type];
+
+      if (/\.(csv|txt|tsv)$/i.test(lower)) {
+        const text = await file.text();
+        setText(type, text);
+
+        if (type === 'zpsr055') {
+          const best = chooseBestZpsr055Matrix_([
+            { source: 'file text pipe preserve', matrix: textToPipeMatrixPreserve_(text) },
+            { source: 'file text tab', matrix: textToTabMatrix_(text) },
+            { source: 'file text fixed-width', matrix: textLooseZpsr055ToMatrix_(text) }
+          ]);
+          rawClipboardMatrices.zpsr055 = best ? best.matrix : null;
+          xlsxZpsr055Matrix = null;
+        }
+
+        const parsed = previewOne(type);
+        fileStatus_(type, 'อ่านไฟล์ข้อความสำเร็จ: ' + fileName + ' / ' + ((parsed && parsed.rows) ? parsed.rows.length : 0) + ' แถว', 'ok');
+        return;
+      }
+
+      if (!window.XLSX) {
+        fileStatus_(type, 'ไม่พบไลบรารี XLSX: ใช้งานแนบ Excel ไม่ได้ ให้ใช้ Clipboard หรือบันทึกเป็น CSV ก่อน', 'bad');
+        alert('ไม่พบไลบรารี XLSX กรุณาเชื่อมต่ออินเทอร์เน็ตแล้ว Refresh หน้าเว็บ หรือใช้ไฟล์ CSV/TXT แทน');
+        return;
+      }
+
+      const buf = await file.arrayBuffer();
+      const workbook = XLSX.read(buf, {
+        type: 'array',
+        cellDates: false,
+        cellText: true,
+        cellNF: true
+      });
+      const sheetName = chooseWorkbookSheet_(workbook, type);
+      const sheet = workbook.Sheets[sheetName];
+
+      if (!sheet) throw new Error('ไม่พบ Sheet ในไฟล์');
+
+      if (type === 'zpsr055') {
+        const rawMatrix = readZpsr055SheetExactMatrix_(sheet);
+        xlsxZpsr055Matrix = normalizeZpsr055ExcelMatrix_(rawMatrix);
+        rawClipboardMatrices.zpsr055 = xlsxZpsr055Matrix;
+        setText(type, matrixToTsv_(xlsxZpsr055Matrix));
+        const parsed = previewOne(type);
+        const q = zpsr055MatrixQuality_(xlsxZpsr055Matrix);
+        const status = $('zpsr055FileStatus');
+        if (status) status.textContent = `อ่านไฟล์ ${fileName} สำเร็จ: ${q.rows} แถว / F(User ผู้ใช้)=${q.userStatusUserCount} / K(User ระบบ)=${q.systemStatusUserCount} / G=${q.userActionCount} / L=${q.systemActionCount}`;
+        fileStatus_(type, `อ่าน Excel ZPSR055 สำเร็จ: ${fileName} / Sheet: ${sheetName} / ${q.rows} แถว / F=${q.userStatusUserCount} / K=${q.systemStatusUserCount}`, 'ok');
+        return parsed;
+      }
+
+      const matrix = readWorksheetMatrix_(sheet);
+      setText(type, genericMatrixToTsv_(matrix));
+      const parsed = previewOne(type);
+      fileStatus_(type, 'อ่าน Excel สำเร็จ: ' + fileName + ' / Sheet: ' + sheetName + ' / ' + matrix.length + ' แถว', 'ok');
+      return parsed;
+    } catch (err) {
+      fileStatus_(type, 'อ่านไฟล์ไม่สำเร็จ: ' + (err.message || err), 'bad');
+      alert('อ่านไฟล์ไม่สำเร็จ: ' + (err.message || err));
+    }
   }
 
   async function loadZpsr055XlsxFile_(file) {
@@ -1804,9 +2014,10 @@ window.addEventListener('error', function(e){
 
       // V24: เลือกแหล่ง Clipboard ที่รักษา F/K User ได้ดีที่สุด ไม่บังคับใช้ HTML ก่อน
       const candidates = [
+        { source: 'text/plain pipe preserve', matrix: textToPipeMatrixPreserve_(plain) },
         { source: 'text/plain tab', matrix: textToTabMatrix_(plain) },
-        { source: 'text/plain fixed-width', matrix: textLooseZpsr055ToMatrix_(plain) },
         { source: 'text/html table', matrix: htmlToMatrix_(html) },
+        { source: 'text/plain fixed-width fallback', matrix: textLooseZpsr055ToMatrix_(plain) },
         { source: 'text/rtf tab', matrix: textToTabMatrix_(rtf) }
       ];
       const best = chooseBestZpsr055Matrix_(candidates);
@@ -1905,7 +2116,7 @@ window.addEventListener('error', function(e){
   function rowsZpsr055ForStaging(parsed) {
     if (!parsed) return [];
 
-    // V25: หัวใจคือ Clipboard ทั้งหมด ไม่ใช่การกรองตาม CN43N
+    // V26: หัวใจคือ Pipe Exact Preserve ไม่ใช่การเดาคอลัมน์
     // ใช้ matrix ที่จับได้จาก paste event โดยตรงก่อน เพื่อรักษา A:L ให้เหมือน SAP มากที่สุด
     const rawRows = zpsr055RawClipboardRowsForStaging_(parsed);
     if (rawRows && rawRows.length) return rawRows;
@@ -2049,6 +2260,13 @@ window.addEventListener('error', function(e){
     document.querySelectorAll('[data-clear]').forEach(btn => {
       btn.addEventListener('click', () => clearOne(btn.getAttribute('data-clear')));
     });
+    document.querySelectorAll('[data-file-type]').forEach(input => {
+      input.addEventListener('change', () => {
+        const type = input.getAttribute('data-file-type');
+        const file = input.files && input.files[0];
+        if (file) loadSapDataFile_(type, file);
+      });
+    });
     $('btnPreviewAll').addEventListener('click', previewAll);
     $('btnCompareOnly').addEventListener('click', renderCompare);
     $('btnClearAll').addEventListener('click', clearAll);
@@ -2091,7 +2309,7 @@ window.addEventListener('error', function(e){
 })();
 
 try {
-  window.PEA_CARS_SAP_LAB_LOADED = 'V24_ZPSR055_CLIPBOARD_EXACT_FIX';
+  window.PEA_CARS_SAP_LAB_LOADED = 'V27_EXCEL_FALLBACK_ZPSR055_PIPE_EXACT';
 } catch (_) {}
 
 </script>
