@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V23 ZPSR055 Clipboard Raw Exact</title>
+  <title>PEA CARS+ SAP Clipboard Preview V23 Clipboard Replace Current</title>
   <style>
 :root {
   --bg: #060b18;
@@ -126,12 +126,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V23 ZPSR055 Clipboard Raw Exact</p>
+          <p>SAP Clipboard Lab V23 Clipboard Replace Current</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V23 ZPSR055 Clipboard Raw Exact</div>
+        <div class="safe-title">โหมดทดลอง V23 Clipboard Replace Current</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,7 +154,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V23 ZPSR055 Clipboard Raw Exact</h2>
+          <h2>SAP Clipboard Import ทดลอง V23 Clipboard Replace Current</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -238,14 +238,10 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
               <div><h3>4. ZPSR055</h3><p>Timeline / User Status / System Status / วันที่เปลี่ยนสถานะ</p></div>
               <span class="badge blue">Timeline</span>
             </div>
-            <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก SAP ที่นี่ หรือใช้ปุ่มเลือกไฟล์ Excel ด้านล่าง..."></textarea>
+            <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก SAP ที่นี่ โดยคัดลอกจาก SAP แล้ว Ctrl+V ลงช่องนี้เท่านั้น"></textarea>
             <div class="note" style="margin-top:10px; padding:10px; border:1px dashed rgba(124,92,255,.45); border-radius:14px;">
-              <strong>V22 สำหรับ ZPSR055:</strong> ใช้ Clipboard จาก SAP โดยตรง ระบบจะจับ text/html หรือ tab-separated cells ให้ได้ A:L เหมือน ZPSR055_Raw มากที่สุด ไม่ต้อง export Excel
-              <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <input id="file-zpsr055-xlsx" type="file" accept=".xlsx,.xls" style="max-width:520px; width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.16); background:#07111f; color:#e5edff;" />
-                <button type="button" class="btn btn-ghost" id="btnClearZpsr055File">ล้างไฟล์ 055</button>
-              </div>
-              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">โหมด Clipboard: วาง ZPSR055 จาก SAP ลงช่องด้านบนโดยตรง</div>
+              <strong>V23 สำหรับ ZPSR055:</strong> ใช้ Clipboard จาก SAP โดยตรงเท่านั้น ไม่ใช้ไฟล์ Excel และไม่ต้อง Export ไฟล์
+              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">โหมด Clipboard Only: คัดลอกจาก SAP แล้ววางลงช่อง ZPSR055 ด้านบนโดยตรง</div>
             </div>
             <div class="card-actions">
               <button class="btn" data-preview="zpsr055">ตรวจสอบ ZPSR055</button>
@@ -270,7 +266,6 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
     </main>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
 
 window.addEventListener('error', function(e){
@@ -1973,30 +1968,7 @@ window.addEventListener('error', function(e){
         if (tabMatrix) rawClipboardMatrices.zpsr055 = tabMatrix;
         xlsxZpsr055Matrix = null;
         const status = $('zpsr055FileStatus');
-        if (status) status.textContent = 'ใช้ข้อมูลจากช่องวาง ZPSR055 / ยังไม่ได้ใช้ไฟล์ Excel';
-      });
-    }
-
-    const zpsr055File = $('file-zpsr055-xlsx');
-    if (zpsr055File) {
-      zpsr055File.addEventListener('change', () => {
-        const file = zpsr055File.files && zpsr055File.files[0];
-        if (file) loadZpsr055XlsxFile_(file).catch(err => {
-          const status = $('zpsr055FileStatus');
-          if (status) status.textContent = 'อ่านไฟล์ไม่สำเร็จ: ' + (err && err.message ? err.message : err);
-          alert('อ่านไฟล์ ZPSR055 ไม่สำเร็จ: ' + (err && err.message ? err.message : err));
-        });
-      });
-    }
-    const clearZpsr055File = $('btnClearZpsr055File');
-    if (clearZpsr055File) {
-      clearZpsr055File.addEventListener('click', () => {
-        xlsxZpsr055Matrix = null;
-        rawClipboardMatrices.zpsr055 = null;
-        const fileInput = $('file-zpsr055-xlsx');
-        if (fileInput) fileInput.value = '';
-        const status = $('zpsr055FileStatus');
-        if (status) status.textContent = 'ล้างไฟล์ ZPSR055 Excel แล้ว';
+        if (status) status.textContent = 'ใช้ข้อมูลจาก Clipboard/ช่องวาง ZPSR055 โดยตรง';
       });
     }
   }
@@ -2005,7 +1977,7 @@ window.addEventListener('error', function(e){
 })();
 
 try {
-  window.PEA_CARS_SAP_LAB_LOADED = 'V21_ZPSR055_XLSX_EXACT';
+  window.PEA_CARS_SAP_LAB_LOADED = 'V23_CLIPBOARD_REPLACE_CURRENT_FIXED';
 } catch (_) {}
 
 </script>
