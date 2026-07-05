@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V23 Clipboard Replace Current</title>
+  <title>PEA CARS+ SAP Clipboard Preview V25 ZPSR055 Clipboard All Raw</title>
   <style>
 :root {
   --bg: #060b18;
@@ -126,12 +126,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V23 Clipboard Replace Current</p>
+          <p>SAP Clipboard Lab V25 ZPSR055 Clipboard All Raw</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V23 Clipboard Replace Current</div>
+        <div class="safe-title">โหมดทดลอง V25 ZPSR055 Clipboard All Raw</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,8 +154,8 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V23 Clipboard Replace Current</h2>
-          <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
+          <h2>SAP Clipboard Import ทดลอง V25 ZPSR055 Clipboard All Raw</h2>
+          <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ZPSR055 จะยึดข้อมูลจาก Clipboard ทั้งหมดแบบ Raw A:L ไม่กรองด้วยฐาน CN43N เพื่อให้ตรงตาม SAP ที่คัดลอกมา โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
           <button class="btn btn-secondary" id="btnPreviewAll">ตรวจสอบทั้งหมด</button>
@@ -188,7 +188,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="card-head compact">
           <div>
             <h3>WBS Cross-check</h3>
-            <p>ใช้ CN43N เป็นฐานเทียบ หากยังไม่วาง CN43N ระบบจะใช้ Union ของทุกแหล่งเป็นฐานชั่วคราว</p>
+            <p>CN43N ยังใช้เทียบ WBS สำหรับภาพรวมเท่านั้น ส่วน ZPSR055 จะไม่ถูกกรองด้วย CN43N และจะส่งทุกแถวจาก Clipboard เข้า Staging</p>
           </div>
           <button class="btn btn-secondary" id="btnCopyCompare">คัดลอกผลเทียบ</button>
         </div>
@@ -240,8 +240,8 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
             </div>
             <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก SAP ที่นี่ โดยคัดลอกจาก SAP แล้ว Ctrl+V ลงช่องนี้เท่านั้น"></textarea>
             <div class="note" style="margin-top:10px; padding:10px; border:1px dashed rgba(124,92,255,.45); border-radius:14px;">
-              <strong>V23 สำหรับ ZPSR055:</strong> ใช้ Clipboard จาก SAP โดยตรงเท่านั้น ไม่ใช้ไฟล์ Excel และไม่ต้อง Export ไฟล์
-              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">โหมด Clipboard Only: คัดลอกจาก SAP แล้ววางลงช่อง ZPSR055 ด้านบนโดยตรง</div>
+              <strong>V25 สำหรับ ZPSR055:</strong> ยึด Clipboard จาก SAP ทั้งหมดแบบ Raw A:L ไม่กรองด้วย CN43N ไม่ใช้ไฟล์ Excel และไม่ต้อง Export ไฟล์
+              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">โหมด Clipboard All Raw: คัดลอกจาก SAP แล้ววางลงช่อง ZPSR055 ระบบจะส่งทุกแถว A:L เข้า Staging ตาม Clipboard</div>
             </div>
             <div class="card-actions">
               <button class="btn" data-preview="zpsr055">ตรวจสอบ ZPSR055</button>
@@ -282,7 +282,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V24-ZPSR055-CLIPBOARD-EXACT-FIX';
+  const LAB_VERSION = 'V25-ZPSR055-CLIPBOARD-ALL-RAW-NO-CN43N-FILTER';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -486,7 +486,7 @@ window.addEventListener('error', function(e){
 
     // V13 แก้เฉพาะ ZPSR055:
     // ถ้ามี CN43N แล้ว ให้ 055 ใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น
-    // WBS ที่เกินจาก CN43N จะแสดงแยกเป็น “ZPSR055 นอกฐาน CN43N”
+    // WBS ที่เกินจาก CN43N จะแสดงแยกเป็น “ZPSR055 ไม่กรอง CN43N”
     if (parsed.type === 'zpsr055') {
       return zpsr055InCn43nList(parsed);
     }
@@ -520,7 +520,7 @@ window.addEventListener('error', function(e){
     if (parsed.type === 'cn43n') return `${primaryWbsCount(parsed)} ใช้เทียบ / เจ้าของว่าง ${parsed.ownerExcludedWbs || 0} / Node ${parsed.leafExcludedWbs || 0}`;
     if (parsed.type === 'zpsr055') {
       const outside = zpsr055OutsideCn43nList(parsed).length;
-      return `${primaryWbsCount(parsed)} ใช้เทียบตาม CN43N / นอกฐาน ${outside}`;
+      return `${(parsed.rows || []).length} แถวจาก Clipboard / ไม่กรอง CN43N`;
     }
     return `${primaryWbsCount(parsed)} ใช้เทียบ / C1+ ${userEligible} / งานจริง+C1 ${userWork}`;
   }
@@ -928,7 +928,7 @@ window.addEventListener('error', function(e){
     result.userStatusTotal = userStatuses.length;
     result.systemStatusTotal = systemStatuses.length;
     result.perWbs = perWbs;
-    result.notes.push('ZPSR055 V13: Parser เดิมคงไว้ แต่เวลานับ/เทียบจะยึดฐาน CN43N หากมี CN43N วางอยู่ และแยก WBS นอกฐานออก');
+    result.notes.push('ZPSR055 V25: ส่งเข้า Staging จาก Clipboard ทั้งหมดแบบ Raw A:L ไม่กรองด้วย CN43N');
     return finalizeResult(result);
   }
 
@@ -982,9 +982,9 @@ window.addEventListener('error', function(e){
           <span>System Status ที่พบ</span><span>${renderPills(parsed.systemStatusCounts, 'warn')}</span>
           <span>จำนวน User Status</span><span>${parsed.userStatusTotal || 0}</span>
           <span>จำนวน System Status</span><span>${parsed.systemStatusTotal || 0}</span>
-          <span>ZPSR055 ใช้เทียบตามฐาน CN43N</span><span class="ok">${eligibleWbsList(parsed).length}</span>
-          <span>ZPSR055 นอกฐาน CN43N</span><span class="warn">${zpsr055OutsideCn43nList(parsed).length}</span>
-          <span>ตัวอย่าง ZPSR055 นอกฐาน CN43N</span><span><pre>${escapeHtml(renderList(zpsr055OutsideCn43nList(parsed), 12))}</pre></span>
+          <span>ZPSR055 Clipboard All Raw</span><span class="ok">${eligibleWbsList(parsed).length}</span>
+          <span>ZPSR055 ไม่กรอง CN43N</span><span class="warn">${zpsr055OutsideCn43nList(parsed).length}</span>
+          <span>ตัวอย่าง ZPSR055 ไม่กรอง CN43N</span><span><pre>${escapeHtml(renderList(zpsr055OutsideCn43nList(parsed), 12))}</pre></span>
         </div>`
       : '';
     const duplicateText = parsed.duplicateWbs && parsed.duplicateWbs.length
@@ -1181,7 +1181,7 @@ window.addEventListener('error', function(e){
       `WBS ที่พบครบทุกแหล่งที่วาง: ${allCommon.length}`,
       `CN43N มีแต่ไม่พบใน ZPSR048/ไม่มีค่าใช้จ่าย: ${v11NoCostFromCn43n.length}`,
       v11NoCostFromCn43n.length ? renderList(v11NoCostFromCn43n, 30) : '-',
-      `ZPSR055 นอกฐาน CN43N: ${zpsr055OutsideCn43n.length}`,
+      `ZPSR055 ไม่กรอง CN43N: ${zpsr055OutsideCn43n.length}`,
       zpsr055OutsideCn43n.length ? renderList(zpsr055OutsideCn43n, 30) : '-',
       '',
       ...summaryRows.map(r => `${r.source}: รวม ${r.total}, งานจริง ${r.work}, แม่ ${r.parent}, ซ้ำ ${r.duplicate}, ขาดจากฐาน ${r.missing}, เกินจากฐาน ${r.extra}`)
@@ -1219,7 +1219,7 @@ window.addEventListener('error', function(e){
 
     const zpsr055OutsideCard = hasCn43n && hasZpsr055 ? `
       <div class="diff-card">
-        <h4>ZPSR055 นอกฐาน CN43N</h4>
+        <h4>ZPSR055 ไม่กรอง CN43N</h4>
         <div class="pill ${zpsr055OutsideCn43n.length ? 'warn' : 'ok'}">${zpsr055OutsideCn43n.length} รายการ</div>
         <p class="note">V13 แก้เฉพาะ 055: รายการเหล่านี้มีใน 055 แต่ไม่อยู่ในฐาน CN43N จึงไม่เอามานับฐานหลัก</p>
         <div class="diff-list">${escapeHtml(renderList(zpsr055OutsideCn43n, 30))}</div>
@@ -1236,7 +1236,7 @@ window.addEventListener('error', function(e){
           <span>แหล่งข้อมูลที่ใช้เทียบ</span><span>${available.map(t => TYPE_LABELS[t]).join(', ')}</span>
           <span>CN43N เกินจาก ZPSR048</span><span class="${v11NoCostFromCn43n.length ? 'warn' : 'ok'}">${v11NoCostFromCn43n.length}</span>
           <span>ตัวอย่าง CN43N ที่ไม่มีค่าใช้จ่าย</span><span><pre>${escapeHtml(renderList(v11NoCostFromCn43n, 12))}</pre></span>
-          <span>ZPSR055 นอกฐาน CN43N</span><span class="${zpsr055OutsideCn43n.length ? 'warn' : 'ok'}">${zpsr055OutsideCn43n.length}</span>
+          <span>ZPSR055 ไม่กรอง CN43N</span><span class="${zpsr055OutsideCn43n.length ? 'warn' : 'ok'}">${zpsr055OutsideCn43n.length}</span>
           <span>ตัวอย่าง ZPSR055 นอกฐาน</span><span><pre>${escapeHtml(renderList(zpsr055OutsideCn43n, 12))}</pre></span>
         </div>
         <div class="table-wrap">
@@ -1540,21 +1540,15 @@ window.addEventListener('error', function(e){
     const matrix = rawClipboardMatrices.zpsr055;
     if (!matrix || !matrix.length) return null;
 
-    const eligible = new Set(eligibleWbsList(parsed));
     const out = [];
-    let currentWbs = '';
 
     matrix.forEach(rawRow => {
       const row = padRow_((rawRow || []).map(cleanSapCell_), 12).slice(0, 12);
       if (!isZpsr055DataLikeRow_(row)) return;
 
-      const rowWbs = normalizeWbs(row[0]) || findWbsInText(row.join(' '));
-      if (rowWbs) currentWbs = rowWbs;
-      if (!currentWbs) return;
-      if (eligible.size && !eligible.has(normalizeWbs(currentWbs))) return;
-
-      // V20: ห้ามเติม/สร้างค่า C:L ใหม่เด็ดขาด ให้คงค่า cell ตาม Clipboard
-      // ถ้าแถวนี้เป็นแถวลูกและ A:B ว่าง ก็ปล่อยว่างเหมือน ZPSR055_Raw
+      // V25: ZPSR055 ยึด Clipboard ทั้งหมดแบบ Raw A:L
+      // ไม่กรองด้วย CN43N, ไม่เติม WBS, ไม่ rebuild คอลัมน์ F/K/G/L
+      // ถ้า SAP แสดง WBS/คำอธิบายว่างในแถวต่อเนื่อง ก็ปล่อยว่างตาม Clipboard
       out.push(row);
     });
 
@@ -1911,16 +1905,14 @@ window.addEventListener('error', function(e){
   function rowsZpsr055ForStaging(parsed) {
     if (!parsed) return [];
 
-    // V23: หัวใจคือ Clipboard ไม่ใช่ Export Excel
-    // ใช้ matrix ที่จับได้จาก paste event โดยตรงก่อน เพื่อรักษา A:L ให้เหมือน ZPSR055_Raw มากที่สุด
+    // V25: หัวใจคือ Clipboard ทั้งหมด ไม่ใช่การกรองตาม CN43N
+    // ใช้ matrix ที่จับได้จาก paste event โดยตรงก่อน เพื่อรักษา A:L ให้เหมือน SAP มากที่สุด
     const rawRows = zpsr055RawClipboardRowsForStaging_(parsed);
     if (rawRows && rawRows.length) return rawRows;
 
-    // fallback: ใช้ parser เดิมเฉพาะกรณีจับ matrix จาก clipboard ไม่ได้
-    // ยังไม่เหมาะสำหรับ Sync จริง ถ้า User/Active หาย ให้หยุดตรวจที่หน้านี้ก่อน
-    const eligible = new Set(eligibleWbsList(parsed));
+    // fallback: ถ้าจับ matrix ไม่ได้ ให้ส่งทุกแถวที่ parser อ่านได้ ไม่กรองด้วย CN43N
     return (parsed.rows || [])
-      .filter(r => r && r.wbs && eligible.has(normalizeWbs(r.wbs)))
+      .filter(r => r)
       .map(r => normalizeZpsr055RawMirrorRow_(r));
   }
 
