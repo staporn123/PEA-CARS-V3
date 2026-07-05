@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V22 ZPSR055 Excel Raw Exact</title>
+  <title>PEA CARS+ SAP Clipboard Preview V23 ZPSR055 Clipboard Raw Exact</title>
   <style>
 :root {
   --bg: #060b18;
@@ -126,12 +126,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V22 ZPSR055 Excel Raw Exact</p>
+          <p>SAP Clipboard Lab V23 ZPSR055 Clipboard Raw Exact</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V22 ZPSR055 Excel Raw Exact</div>
+        <div class="safe-title">โหมดทดลอง V23 ZPSR055 Clipboard Raw Exact</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -154,7 +154,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V22 ZPSR055 Excel Raw Exact</h2>
+          <h2>SAP Clipboard Import ทดลอง V23 ZPSR055 Clipboard Raw Exact</h2>
           <p>วางข้อมูลจาก SAP ทั้ง 4 แหล่ง แล้วระบบจะแยก Parser เฉพาะทาง, ตัด WBS ซ้ำ, แยก WBS แม่/งานจริง, ใช้กฎเดิมของ CN43N / ZPSR048 / CN52N คงไว้ และแก้เฉพาะ ZPSR055: ถ้ามีฐาน CN43N แล้ว ZPSR055 จะใช้เทียบเฉพาะ WBS ที่อยู่ในฐาน CN43N เท่านั้น พร้อมแยก WBS นอกฐาน CN43N ออกมาให้ตรวจ โดยยังไม่บันทึกข้อมูลจริง</p>
         </div>
         <div class="header-actions">
@@ -240,12 +240,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
             </div>
             <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก SAP ที่นี่ หรือใช้ปุ่มเลือกไฟล์ Excel ด้านล่าง..."></textarea>
             <div class="note" style="margin-top:10px; padding:10px; border:1px dashed rgba(124,92,255,.45); border-radius:14px;">
-              <strong>V22 สำหรับ ZPSR055:</strong> เพื่อให้เหมือน ZPSR055_Raw เป๊ะ ต้องเลือกไฟล์ Excel 055 (.xlsx) ตรงนี้ก่อนบันทึกเข้า Staging ระบบจะอ่านเซลล์ A:L โดยตรง ไม่ rebuild ข้อมูล
+              <strong>V22 สำหรับ ZPSR055:</strong> ใช้ Clipboard จาก SAP โดยตรง ระบบจะจับ text/html หรือ tab-separated cells ให้ได้ A:L เหมือน ZPSR055_Raw มากที่สุด ไม่ต้อง export Excel
               <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <input id="file-zpsr055-xlsx" type="file" accept=".xlsx,.xls" style="max-width:520px; width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.16); background:#07111f; color:#e5edff;" />
                 <button type="button" class="btn btn-ghost" id="btnClearZpsr055File">ล้างไฟล์ 055</button>
               </div>
-              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">ยังไม่ได้เลือกไฟล์ ZPSR055 Excel</div>
+              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">โหมด Clipboard: วาง ZPSR055 จาก SAP ลงช่องด้านบนโดยตรง</div>
             </div>
             <div class="card-actions">
               <button class="btn" data-preview="zpsr055">ตรวจสอบ ZPSR055</button>
@@ -287,7 +287,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V22-ZPSR055-EXCEL-RAW-EXACT';
+  const LAB_VERSION = 'V23-ZPSR055-CLIPBOARD-RAW-EXACT';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -1329,7 +1329,7 @@ window.addEventListener('error', function(e){
 
 
   // ===============================
-  // SAP Staging API Client V22 ZPSR055 Excel Raw Exact
+  // SAP Staging API Client V23 ZPSR055 Clipboard Raw Exact
   // ===============================
   const STAGING_API_STORAGE_KEY = 'PEA_CARS_SAP_STAGING_API_URL';
 
@@ -1702,11 +1702,21 @@ window.addEventListener('error', function(e){
       if (!cd) return;
       const html = cd.getData('text/html') || '';
       const plain = cd.getData('text/plain') || '';
-      const htmlMatrix = htmlToMatrix_(html);
-      const tabMatrix = textToTabMatrix_(plain);
-      rawClipboardMatrices.zpsr055 = htmlMatrix || tabMatrix || null;
+      const rtf = cd.getData('text/rtf') || '';
+      const htmlMatrix = htmlToMatrix_(html) || htmlLooseToMatrix_(html);
+      const tabMatrix = textToTabMatrix_(plain) || textLooseZpsr055ToMatrix_(plain);
+      const rtfMatrix = textToTabMatrix_(rtf) || null;
+      rawClipboardMatrices.zpsr055 = htmlMatrix || tabMatrix || rtfMatrix || null;
       if (rawClipboardMatrices.zpsr055) {
-        console.log('ZPSR055 clipboard matrix captured', rawClipboardMatrices.zpsr055.length, 'rows');
+        console.log('ZPSR055 clipboard matrix captured', rawClipboardMatrices.zpsr055.length, 'rows', 'types=', Array.from(cd.types || []));
+      } else {
+        console.warn('ZPSR055 clipboard matrix not captured', Array.from(cd.types || []));
+      }
+      xlsxZpsr055Matrix = null;
+      const status = $('zpsr055FileStatus');
+      if (status && rawClipboardMatrices.zpsr055) {
+        const q = zpsr055MatrixQuality_(rawClipboardMatrices.zpsr055);
+        status.textContent = `จับ Clipboard ZPSR055 ได้ ${q.rows} แถว / F(User ผู้ใช้)=${q.userStatusUserCount} / K(User ระบบ)=${q.systemStatusUserCount}`;
       }
     } catch (err) {
       console.warn('captureZpsr055Clipboard failed', err);
@@ -1794,45 +1804,22 @@ window.addEventListener('error', function(e){
   function rowsZpsr055ForStaging(parsed) {
     if (!parsed) return [];
 
-    // V22: ใช้ไฟล์ Excel 055 เป็นแหล่งข้อมูลหลักแบบ Raw Exact เท่านั้น
-    // เพื่อให้ A:L ตรงกับ ZPSR055_Raw และไม่ทำให้ User เปลี่ยนสถานะหายบางแถว
-    if (xlsxZpsr055Matrix && xlsxZpsr055Matrix.length) {
-      const eligible = new Set(eligibleWbsList(parsed));
-      const out = [];
-      let currentWbs = '';
+    // V23: หัวใจคือ Clipboard ไม่ใช่ Export Excel
+    // ใช้ matrix ที่จับได้จาก paste event โดยตรงก่อน เพื่อรักษา A:L ให้เหมือน ZPSR055_Raw มากที่สุด
+    const rawRows = zpsr055RawClipboardRowsForStaging_(parsed);
+    if (rawRows && rawRows.length) return rawRows;
 
-      xlsxZpsr055Matrix.forEach(rawRow => {
-        const row = padRow_((rawRow || []).map(cleanSapCell_), 12).slice(0, 12);
-        const rowWbs = normalizeWbs(row[0]) || findWbsInText(row.join(' '));
-        if (rowWbs) currentWbs = rowWbs;
-        if (!currentWbs) return;
-        if (eligible.size && !eligible.has(normalizeWbs(currentWbs))) return;
-
-        // ห้ามเติมค่าที่ว่างเอง: ถ้า ZPSR055_Raw เดิมว่าง ก็ต้องว่างเหมือนเดิม
-        out.push(row);
-      });
-
-      return out;
-    }
-
-    // ถ้าไม่ได้เลือกไฟล์ Excel ให้กันไว้ก่อน ไม่ส่ง ZPSR055 เข้า Staging เพราะมีโอกาส User/Active หาย
-    const textZ = $('text-zpsr055') ? $('text-zpsr055').value.trim() : '';
-    if (textZ) {
-      throw new Error('ZPSR055 ต้องเลือกไฟล์ Excel 055 (.xlsx) ก่อนบันทึกเข้า Staging เพื่อให้ User/วันที่/เวลา/Active ครบเหมือน ZPSR055_Raw');
-    }
-
-    return [];
+    // fallback: ใช้ parser เดิมเฉพาะกรณีจับ matrix จาก clipboard ไม่ได้
+    // ยังไม่เหมาะสำหรับ Sync จริง ถ้า User/Active หาย ให้หยุดตรวจที่หน้านี้ก่อน
+    const eligible = new Set(eligibleWbsList(parsed));
+    return (parsed.rows || [])
+      .filter(r => r && r.wbs && eligible.has(normalizeWbs(r.wbs)))
+      .map(r => normalizeZpsr055RawMirrorRow_(r));
   }
 
   function buildStagingPayload() {
     previewAll();
     const parsed = getAllParsed();
-
-    // V22 Safety: ถ้ามีข้อมูล ZPSR055 แต่ยังไม่ได้เลือกไฟล์ Excel exact ให้หยุดก่อน
-    const zText = $('text-zpsr055') ? $('text-zpsr055').value.trim() : '';
-    if (zText && (!xlsxZpsr055Matrix || !xlsxZpsr055Matrix.length)) {
-      throw new Error('กรุณาเลือกไฟล์ Excel ZPSR055 (.xlsx) ในช่อง ZPSR055 ก่อนบันทึกเข้า Staging เพื่อให้ข้อมูลตรงกับ ZPSR055_Raw เป๊ะ');
-    }
 
     const batchId = 'SAPWEB-' + new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
 
@@ -1847,6 +1834,8 @@ window.addEventListener('error', function(e){
       sourceNote: 'SAP Clipboard Lab ' + LAB_VERSION,
       remark: 'บันทึกจากหน้า GitHub SAP Clipboard Lab / ยังไม่ Sync เข้าระบบจริง',
       baseWbsCount: cn43n.length,
+      replaceStaging: true,
+      replaceMode: 'REPLACE_CURRENT',
       cn43n: cn43n,
       zpsr048: zpsr048,
       cn52n: cn52n,
