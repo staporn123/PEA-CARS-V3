@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PEA CARS+ SAP Clipboard Preview V28 ZPSR055 Excel Only Fallback</title>
+  <title>PEA CARS+ SAP Clipboard Preview V30 File or Clipboard All Inputs</title>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
 :root {
@@ -136,12 +136,12 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="brand-icon">⚡</div>
         <div>
           <h1>PEA CARS+</h1>
-          <p>SAP Clipboard Lab V28 ZPSR055 Excel Only</p>
+          <p>SAP Clipboard Lab V30 File / Clipboard</p>
         </div>
       </div>
 
       <div class="safe-box">
-        <div class="safe-title">โหมดทดลอง V28 ZPSR055 ใช้ไฟล์ Excel</div>
+        <div class="safe-title">โหมดทดลอง V30 แนบไฟล์หรือ Clipboard</div>
         <p>หน้านี้ทำงานใน Browser เท่านั้น</p>
         <ul>
           <li>ไม่แตะ Code.gs</li>
@@ -164,8 +164,8 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
       <header class="page-header">
         <div>
           <div class="eyebrow">Preview + Staging Only / No Sync</div>
-          <h2>SAP Clipboard Import ทดลอง V28: 055 ใช้ Excel / อื่นใช้ Clipboard</h2>
-          <p>วางข้อมูลจาก SAP สำหรับ CN43N / ZPSR048 / CN52N ด้วย Clipboard ตามปกติ ส่วน ZPSR055 ให้แนบไฟล์ Excel เป็นหลักเพื่อรักษาคอลัมน์ A:L โดยเฉพาะ F/K User และ G/L Active-Inactive ให้ตรง SAP ก่อนบันทึกเข้า Staging ยังไม่ Sync เข้าระบบจริง</p>
+          <h2>SAP Clipboard Import ทดลอง V30: Clipboard หรือแนบไฟล์ได้ทุกชุดข้อมูล</h2>
+          <p>วางข้อมูลจาก SAP Clipboard ได้ตามปกติ หรือแนบไฟล์ Excel/CSV/TXT ได้ครบทั้ง CN43N / ZPSR048 / CN52N / ZPSR055 เพื่อเป็นทางสำรองกรณี Clipboard เลื่อนคอลัมน์ ก่อนบันทึกเข้า Staging ยังไม่ Sync เข้าระบบจริง</p>
         </div>
         <div class="header-actions">
           <button class="btn btn-secondary" id="btnPreviewAll">ตรวจสอบทั้งหมด</button>
@@ -198,7 +198,7 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
         <div class="card-head compact">
           <div>
             <h3>WBS Cross-check</h3>
-            <p>CN43N / ZPSR048 / CN52N ใช้ Clipboard ตามเดิม โดย V29 รักษาช่องว่าง Pipe ของ CN52N ไม่ให้ปริมาณ/ราคาเลื่อน ส่วน ZPSR055 ใช้ไฟล์ Excel เป็นหลักเพื่อกันคอลัมน์เลื่อนจาก Clipboard</p>
+            <p>V30 รองรับทั้ง Clipboard และไฟล์สำหรับทุกชุดข้อมูล โดยรักษาช่องว่าง Pipe ของ CN52N ไม่ให้ปริมาณ/ราคาเลื่อน และ ZPSR055 ใช้ได้ทั้ง Clipboard หรือไฟล์ Excel/CSV/TXT</p>
           </div>
           <button class="btn btn-secondary" id="btnCopyCompare">คัดลอกผลเทียบ</button>
         </div>
@@ -217,7 +217,13 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
               <button class="btn" data-preview="cn43n">ตรวจสอบ CN43N</button>
               <button class="btn btn-ghost" data-clear="cn43n">ล้างช่องนี้</button>
             </div>
-            <p class="mini">โหมด V28: ส่วนนี้ใช้ Clipboard ตามปกติ ไม่ต้องแนบไฟล์</p>
+            <p class="mini">V30: ใช้ Clipboard ได้ตามปกติ หรือแนบไฟล์ Excel/CSV/TXT เป็นทางสำรองได้</p>
+            <div class="file-fallback">
+              <label for="file-cn43n">แนบไฟล์ CN43N</label>
+              <input id="file-cn43n" data-file-type="cn43n" type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" />
+              <button class="btn btn-ghost" type="button" data-clear-file="cn43n">ล้างไฟล์</button>
+              <span class="file-status" id="fileStatus-cn43n">ยังไม่ได้แนบไฟล์ ใช้ Clipboard ได้ตามปกติ</span>
+            </div>
           </article>
 
           <article class="paste-card" id="zpsr048">
@@ -230,7 +236,13 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
               <button class="btn" data-preview="zpsr048">ตรวจสอบ ZPSR048</button>
               <button class="btn btn-ghost" data-clear="zpsr048">ล้างช่องนี้</button>
             </div>
-            <p class="mini">โหมด V28: ส่วนนี้ใช้ Clipboard ตามปกติ ไม่ต้องแนบไฟล์</p>
+            <p class="mini">V30: ใช้ Clipboard ได้ตามปกติ หรือแนบไฟล์ Excel/CSV/TXT เป็นทางสำรองได้</p>
+            <div class="file-fallback">
+              <label for="file-zpsr048">แนบไฟล์ ZPSR048</label>
+              <input id="file-zpsr048" data-file-type="zpsr048" type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" />
+              <button class="btn btn-ghost" type="button" data-clear-file="zpsr048">ล้างไฟล์</button>
+              <span class="file-status" id="fileStatus-zpsr048">ยังไม่ได้แนบไฟล์ ใช้ Clipboard ได้ตามปกติ</span>
+            </div>
           </article>
 
           <article class="paste-card" id="cn52n">
@@ -243,7 +255,13 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
               <button class="btn" data-preview="cn52n">ตรวจสอบ CN52N</button>
               <button class="btn btn-ghost" data-clear="cn52n">ล้างช่องนี้</button>
             </div>
-            <p class="mini">โหมด V28: ส่วนนี้ใช้ Clipboard ตามปกติ ไม่ต้องแนบไฟล์</p>
+            <p class="mini">V30: ใช้ Clipboard ได้ตามปกติ หรือแนบไฟล์ Excel/CSV/TXT เป็นทางสำรองได้</p>
+            <div class="file-fallback">
+              <label for="file-cn52n">แนบไฟล์ CN52N</label>
+              <input id="file-cn52n" data-file-type="cn52n" type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" />
+              <button class="btn btn-ghost" type="button" data-clear-file="cn52n">ล้างไฟล์</button>
+              <span class="file-status" id="fileStatus-cn52n">ยังไม่ได้แนบไฟล์ ใช้ Clipboard ได้ตามปกติ</span>
+            </div>
           </article>
 
           <article class="paste-card" id="zpsr055">
@@ -251,10 +269,10 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
               <div><h3>4. ZPSR055</h3><p>Timeline / User Status / System Status / วันที่เปลี่ยนสถานะ</p></div>
               <span class="badge blue">Timeline</span>
             </div>
-            <textarea id="text-zpsr055" placeholder="V28: แนะนำให้แนบไฟล์ Excel ZPSR055 ด้านล่างเป็นหลัก ช่องนี้ใช้ดูข้อมูลหลังอ่านไฟล์ หรือใช้ฉุกเฉินเท่านั้น"></textarea>
+            <textarea id="text-zpsr055" placeholder="วางข้อมูล ZPSR055 จาก Clipboard หรือแนบไฟล์ Excel/CSV/TXT ด้านล่าง..."></textarea>
             <div class="note" style="margin-top:10px; padding:10px; border:1px dashed rgba(124,92,255,.45); border-radius:14px;">
-              <strong>V28 สำหรับ ZPSR055:</strong> ใช้ไฟล์ Excel เป็นหลักเพื่อรักษา Raw A:L ไม่กรองด้วย CN43N และกัน User F/K หายจาก Clipboard
-              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">โหมด Excel Main: กรุณาแนบไฟล์ Excel ZPSR055 เพื่อรักษาคอลัมน์ A:L โดยเฉพาะ F/K User และ G/L Active-Inactive</div>
+              <strong>V30 สำหรับ ZPSR055:</strong> ใช้ได้ทั้ง Clipboard และไฟล์ Excel/CSV/TXT หาก Clipboard เลื่อนคอลัมน์ให้ใช้ไฟล์เป็นทางสำรอง
+              <div id="zpsr055FileStatus" class="mini" style="margin-top:8px; color:#9fb3d9;">ใช้ Clipboard หรือแนบไฟล์ ZPSR055 ได้ หาก Clipboard เลื่อนคอลัมน์ให้แนบไฟล์เพื่อรักษา A:L โดยเฉพาะ F/K User</div>
             </div>
             <div class="card-actions">
               <button class="btn" data-preview="zpsr055">ตรวจสอบ ZPSR055</button>
@@ -263,7 +281,8 @@ textarea:focus { border-color: var(--brand2); box-shadow: 0 0 0 3px rgba(37,194,
             <div class="file-fallback">
               <label for="file-zpsr055">แนบไฟล์ ZPSR055</label>
               <input id="file-zpsr055" data-file-type="zpsr055" type="file" accept=".xlsx,.xls,.csv,.txt,.tsv" />
-              <span class="file-status" id="fileStatus-zpsr055">ใช้ไฟล์ Excel ZPSR055 เป็นหลัก: ระบบจะอ่าน 12 คอลัมน์แรก A:L ให้ตรง SAP</span>
+              <button class="btn btn-ghost" type="button" data-clear-file="zpsr055">ล้างไฟล์</button>
+              <span class="file-status" id="fileStatus-zpsr055">ยังไม่ได้แนบไฟล์ ใช้ Clipboard ได้ หรือแนบไฟล์เพื่ออ่าน 12 คอลัมน์แรก A:L ให้ตรง SAP</span>
             </div>
           </article>
         </div>
@@ -300,7 +319,7 @@ window.addEventListener('error', function(e){
 (function () {
   'use strict';
 
-  const LAB_VERSION = 'V29-CN52N-PIPE-PRESERVE-ZPSR055-EXCEL';
+  const LAB_VERSION = 'V30-ALL-FILE-OR-CLIPBOARD-CN52N-PIPE-PRESERVE';
 
   const TYPES = ['cn43n', 'zpsr048', 'cn52n', 'zpsr055'];
   const TYPE_LABELS = {
@@ -950,7 +969,7 @@ window.addEventListener('error', function(e){
     result.userStatusTotal = userStatuses.length;
     result.systemStatusTotal = systemStatuses.length;
     result.perWbs = perWbs;
-    result.notes.push('ZPSR055 V28: ส่งเข้า Staging จากไฟล์ Excel/CSV/TXT เป็นหลักแบบ Raw A:L ไม่กรองด้วย CN43N');
+    result.notes.push('ZPSR055 V30: ส่งเข้า Staging ได้ทั้ง Clipboard หรือไฟล์ Excel/CSV/TXT แบบ Raw A:L ไม่กรองด้วย CN43N');
     return finalizeResult(result);
   }
 
@@ -1308,19 +1327,40 @@ window.addEventListener('error', function(e){
   function clearOne(type) {
     setText(type, '');
     delete parsedCache[type];
+    clearFile(type);
     if (type === 'zpsr055') {
       zpsr055FileLoaded = false;
       zpsr055FileLoadedName = '';
       xlsxZpsr055Matrix = null;
       rawClipboardMatrices.zpsr055 = null;
       const status = $('zpsr055FileStatus');
-      if (status) status.textContent = 'โหมด Excel Main: กรุณาแนบไฟล์ Excel ZPSR055 เพื่อรักษาคอลัมน์ A:L';
+      if (status) status.textContent = 'ใช้ Clipboard หรือแนบไฟล์ ZPSR055 ได้ หาก Clipboard เลื่อนคอลัมน์ให้แนบไฟล์เพื่อรักษา A:L';
     }
     const el = $('sum-' + type);
     if (el) {
       el.textContent = '-';
       const small = el.closest('.summary-card')?.querySelector('small');
       if (small) small.textContent = 'ยังไม่ตรวจ';
+    }
+  }
+
+  function defaultFileStatusText_(type) {
+    if (type === 'zpsr055') return 'ยังไม่ได้แนบไฟล์ ใช้ Clipboard ได้ หรือแนบไฟล์เพื่ออ่าน 12 คอลัมน์แรก A:L ให้ตรง SAP';
+    return 'ยังไม่ได้แนบไฟล์ ใช้ Clipboard ได้ตามปกติ';
+  }
+
+  function clearFile(type) {
+    const input = $('file-' + type);
+    if (input) input.value = '';
+    fileStatus_(type, defaultFileStatusText_(type), '');
+    if (type === 'zpsr055') {
+      zpsr055FileLoaded = false;
+      zpsr055FileLoadedName = '';
+      xlsxZpsr055Matrix = null;
+      rawClipboardMatrices.zpsr055 = null;
+      const status = $('zpsr055FileStatus');
+      if (status) status.textContent = 'ใช้ Clipboard หรือแนบไฟล์ ZPSR055 ได้ หาก Clipboard เลื่อนคอลัมน์ให้แนบไฟล์เพื่อรักษา A:L โดยเฉพาะ F/K User';
+      delete parsedCache.zpsr055;
     }
   }
 
@@ -2196,10 +2236,6 @@ window.addEventListener('error', function(e){
   async function saveToStaging() {
     try {
       const payload = buildStagingPayload();
-      if (payload.zpsr055.length && !zpsr055FileLoaded) {
-        setStagingStatus('V28: ZPSR055 ต้องมาจากไฟล์ Excel/CSV/TXT ก่อนบันทึก เพื่อกัน Clipboard เลื่อนคอลัมน์ กรุณากดแนบไฟล์ ZPSR055 แล้วตรวจสอบอีกครั้ง', 'bad');
-        return;
-      }
       if (!payload.cn43n.length && !payload.zpsr048.length && !payload.cn52n.length && !payload.zpsr055.length) {
         setStagingStatus('ยังไม่มีข้อมูลสำหรับบันทึก กรุณาวางข้อมูลและกดตรวจสอบก่อน', 'bad');
         return;
@@ -2213,7 +2249,7 @@ window.addEventListener('error', function(e){
         'ZPSR048: ' + payload.zpsr048.length,
         'CN52N: ' + payload.cn52n.length,
         'ZPSR055: ' + payload.zpsr055.length,
-        'ZPSR055 File: ' + (zpsr055FileLoadedName || '-'),
+        'ZPSR055 File/Clipboard: ' + (zpsr055FileLoadedName || 'Clipboard/ช่องวาง'),
         '',
         'ขั้นนี้ยังไม่ Sync เข้าระบบจริง'
       ].join('\n');
@@ -2235,7 +2271,7 @@ window.addEventListener('error', function(e){
               'ZPSR048: ' + payload.zpsr048.length + '\n' +
               'CN52N: ' + payload.cn52n.length + '\n' +
               'ZPSR055: ' + payload.zpsr055.length + '\n' +
-              'ZPSR055 File: ' + (zpsr055FileLoadedName || '-') + '\n' +
+              'ZPSR055 File/Clipboard: ' + (zpsr055FileLoadedName || 'Clipboard/ช่องวาง') + '\n' +
               'ตรวจสอบได้ในชีต SAP_IMPORT_BATCH และ SAP_STAGING_*',
               'ok'
             );
@@ -2269,6 +2305,9 @@ window.addEventListener('error', function(e){
     });
     document.querySelectorAll('[data-clear]').forEach(btn => {
       btn.addEventListener('click', () => clearOne(btn.getAttribute('data-clear')));
+    });
+    document.querySelectorAll('[data-clear-file]').forEach(btn => {
+      btn.addEventListener('click', () => clearFile(btn.getAttribute('data-clear-file')));
     });
     document.querySelectorAll('[data-file-type]').forEach(input => {
       input.addEventListener('change', () => {
@@ -2321,7 +2360,7 @@ window.addEventListener('error', function(e){
 })();
 
 try {
-  window.PEA_CARS_SAP_LAB_LOADED = 'V27_EXCEL_FALLBACK_ZPSR055_PIPE_EXACT';
+  window.PEA_CARS_SAP_LAB_LOADED = 'V30_ALL_FILE_OR_CLIPBOARD_CN52N_PIPE_PRESERVE';
 } catch (_) {}
 
 </script>
