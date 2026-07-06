@@ -7,7 +7,7 @@ const CONFIG = {
   // =========================================
   // Google Apps Script API URL
   // =========================================
-  API_URL: "https://script.google.com/macros/s/AKfycbykMTwnp9pRtHUAqoHYSa5LPVNYTCHLtk2wJ3QeCf2Hp9WmBQACOWc8BxwW2CetAMNjww/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbw6owjAgyvSokIpMlsJ8bf-JBxzqzK19kZwPe8LW3JyRd8i8DDl2CAsDrgo3ShyyLtP6Q/exec",
 
   API_TIMEOUT: 60000,
 
