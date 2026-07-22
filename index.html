@@ -1,4 +1,6 @@
-<!DOCTYPE html>
+from pathlib import Path
+
+index_html = r'''<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
@@ -9,6 +11,100 @@
   <link rel="stylesheet" href="style.css" />
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- V5.5.7B Material Return UI Patch -->
+  <style>
+    .material-return-ui-patch-card {
+      margin-top: 16px;
+      border: 1px solid rgba(251, 146, 60, 0.35);
+      background:
+        radial-gradient(circle at top right, rgba(251, 146, 60, 0.16), transparent 32%),
+        rgba(15, 23, 42, 0.72);
+    }
+
+    .material-return-ui-patch-card h3 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      color: #fed7aa;
+    }
+
+    .material-return-ui-patch-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+
+    .material-return-ui-patch-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(251, 146, 60, 0.12);
+      border: 1px solid rgba(251, 146, 60, 0.35);
+      color: #ffedd5;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .material-return-ui-patch-table-wrap {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .material-return-ui-patch-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 920px;
+    }
+
+    .material-return-ui-patch-table th,
+    .material-return-ui-patch-table td {
+      padding: 12px 10px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+    }
+
+    .material-return-ui-patch-table th {
+      color: #bfdbfe;
+      background: rgba(15, 23, 42, 0.8);
+      font-weight: 800;
+    }
+
+    .material-return-ui-patch-table td {
+      color: #e5e7eb;
+    }
+
+    .material-return-ui-patch-code {
+      color: #bfdbfe;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .material-return-ui-patch-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 9px;
+      border-radius: 999px;
+      color: #ffedd5;
+      background: rgba(251, 146, 60, 0.18);
+      border: 1px solid rgba(251, 146, 60, 0.4);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .material-return-ui-patch-original-hidden {
+      display: none !important;
+    }
+  </style>
 </head>
 
 <body>
@@ -215,5 +311,359 @@
   <script src="config.js"></script>
   <script src="api.js"></script>
   <script src="script.js"></script>
+
+  <!--
+    PEA CARS+ V5.5.7B Material Return UI Hotfix
+    - ใช้ข้อมูล materialReturnItems / returnItems จาก Apps Script API
+    - ซ่อนรายการ Movement 581 ออกจากตาราง Material Detail เดิม
+    - แสดงกล่อง "พัสดุส่งคืน" แยกต่างหาก
+    - ไม่แก้ไฟล์ script.js เดิม เพื่อให้ย้อนกลับง่าย
+  -->
+  <script>
+    (function () {
+      const RETURN_PATCH_VERSION = 'V5.5.7B-RETURN-UI';
+      const API_FALLBACK_URL = 'https://script.google.com/macros/s/AKfycbyBjXW7TYE_VJq3KZmnaoycW7ilwpxzgPUqrxt-Rv6sNRcYPhcfxBwGF78W8y14qeDIag/exec';
+
+      let lastAppliedKey = '';
+      let applying = false;
+
+      function text(value) {
+        return value === null || value === undefined ? '' : String(value).trim();
+      }
+
+      function toNumber(value) {
+        if (value === null || value === undefined || value === '') return 0;
+        const n = Number(String(value).replace(/,/g, ''));
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function formatNumber(value, digits) {
+        const n = toNumber(value);
+        return n.toLocaleString('th-TH', {
+          minimumFractionDigits: digits || 0,
+          maximumFractionDigits: digits || 2
+        });
+      }
+
+      function money(value) {
+        return toNumber(value).toLocaleString('th-TH', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+      }
+
+      function escapeHtml(value) {
+        return text(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function getApiBaseUrl() {
+        const candidates = [
+          window.API_URL,
+          window.API_BASE_URL,
+          window.WEB_APP_URL,
+          window.CARS_API_URL,
+          window.PEA_CARS_API_URL,
+          window.CONFIG && window.CONFIG.API_URL,
+          window.CONFIG && window.CONFIG.API_BASE_URL,
+          window.CONFIG && window.CONFIG.WEB_APP_URL,
+          window.APP_CONFIG && window.APP_CONFIG.API_URL,
+          window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL,
+          window.PEA_CARS_CONFIG && window.PEA_CARS_CONFIG.API_URL,
+          window.PEA_CARS_CONFIG && window.PEA_CARS_CONFIG.API_BASE_URL,
+          window.CARS_CONFIG && window.CARS_CONFIG.API_URL,
+          window.CARS_CONFIG && window.CARS_CONFIG.API_BASE_URL
+        ];
+
+        for (const candidate of candidates) {
+          const url = text(candidate);
+          if (url && url.indexOf('script.google.com/macros/s/') >= 0) return url;
+        }
+
+        return API_FALLBACK_URL;
+      }
+
+      function makeApiUrl(action, params) {
+        const base = getApiBaseUrl();
+        const url = new URL(base);
+        url.searchParams.set('action', action);
+
+        Object.keys(params || {}).forEach(function (key) {
+          url.searchParams.set(key, params[key]);
+        });
+
+        return url.toString();
+      }
+
+      function getCurrentWbs() {
+        const title = document.getElementById('modalTitle');
+        const body = document.getElementById('modalBody');
+
+        const source = [
+          title ? title.textContent : '',
+          body ? body.textContent.slice(0, 600) : ''
+        ].join(' ');
+
+        const match = source.match(/[A-Z]-\d{2}-[A-Z]-[A-Z0-9]+(?:\.[A-Z0-9]+)+/i);
+        return match ? match[0].toUpperCase() : '';
+      }
+
+      function isReturnMaterial(item) {
+        if (!item) return false;
+
+        const movementType = text(item.movementType || item.movement);
+        const materialFlow = text(item.materialFlow).toUpperCase();
+        const flowLabel = text(item.flowLabel);
+        const requiredRaw = text(item.requiredRaw);
+        const requiredSigned = toNumber(item.requiredSigned);
+        const returnQty = toNumber(item.returnQty);
+
+        return (
+          movementType === '581' ||
+          materialFlow === 'RETURN' ||
+          flowLabel === 'พัสดุส่งคืน' ||
+          requiredRaw.startsWith('-') ||
+          requiredRaw.endsWith('-') ||
+          requiredSigned < 0 ||
+          returnQty > 0
+        );
+      }
+
+      function getReturnItems(detail) {
+        const directItems = []
+          .concat(Array.isArray(detail.materialReturnItems) ? detail.materialReturnItems : [])
+          .concat(Array.isArray(detail.returnItems) ? detail.returnItems : []);
+
+        const allItems = []
+          .concat(Array.isArray(detail.items) ? detail.items : [])
+          .concat(Array.isArray(detail.allItems) ? detail.allItems : []);
+
+        const merged = directItems.length ? directItems : allItems.filter(isReturnMaterial);
+
+        const seen = {};
+        return merged.filter(function (item) {
+          const key = [
+            text(item.materialId),
+            text(item.wbs),
+            text(item.network),
+            text(item.reservationNo),
+            text(item.materialCode),
+            text(item.movementType),
+            text(item.requiredRaw)
+          ].join('|');
+
+          if (seen[key]) return false;
+          seen[key] = true;
+          return isReturnMaterial(item);
+        });
+      }
+
+      function findMaterialDetailCard() {
+        const modalBody = document.getElementById('modalBody');
+        if (!modalBody) return null;
+
+        const candidates = Array.from(modalBody.querySelectorAll('.card, section, div'))
+          .filter(function (el) {
+            return el.textContent &&
+              el.textContent.indexOf('Material Detail') >= 0 &&
+              el.querySelector('table');
+          });
+
+        if (!candidates.length) return null;
+
+        candidates.sort(function (a, b) {
+          return a.textContent.length - b.textContent.length;
+        });
+
+        return candidates[0];
+      }
+
+      function clearOldPatch() {
+        document.querySelectorAll('.material-return-ui-patch-card').forEach(function (el) {
+          el.remove();
+        });
+
+        document.querySelectorAll('.material-return-ui-patch-original-hidden').forEach(function (row) {
+          row.classList.remove('material-return-ui-patch-original-hidden');
+        });
+      }
+
+      function hideReturnRowsInOriginalTable(materialCard, returnItems) {
+        const table = materialCard ? materialCard.querySelector('table') : null;
+        if (!table) return;
+
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
+        const returnCodes = returnItems.map(function (item) {
+          return text(item.materialCode);
+        }).filter(Boolean);
+
+        rows.forEach(function (row) {
+          const rowText = row.textContent || '';
+          const isReturnRow = returnCodes.some(function (code) {
+            return code && rowText.indexOf(code) >= 0;
+          });
+
+          if (isReturnRow) {
+            row.classList.add('material-return-ui-patch-original-hidden');
+          }
+        });
+      }
+
+      function renderReturnCard(detail, returnItems) {
+        const returnCount = toNumber(detail.returnCount || returnItems.length);
+        const returnQtyTotal = toNumber(detail.returnQtyTotal || returnItems.reduce(function (sum, item) {
+          return sum + toNumber(item.returnQty || item.requiredQty || item.required);
+        }, 0));
+        const returnValueTotal = toNumber(detail.returnValueTotal || returnItems.reduce(function (sum, item) {
+          return sum + toNumber(item.returnValue);
+        }, 0));
+
+        const rows = returnItems.map(function (item) {
+          const qty = toNumber(item.returnQty || item.requiredQty || item.required);
+          const unit = text(item.unit || item.materialUnit || item.baseUnit);
+          const value = toNumber(item.returnValue);
+          const movement = text(item.movementType || item.movement || '581');
+          const reservation = text(item.reservationNo);
+          const network = text(item.network);
+
+          return `
+            <tr>
+              <td class="material-return-ui-patch-code">${escapeHtml(item.materialCode)}</td>
+              <td>${escapeHtml(item.materialName || item.materialDescription || '-')}</td>
+              <td>${escapeHtml(network || '-')}</td>
+              <td>${escapeHtml(reservation || '-')}</td>
+              <td>${escapeHtml(movement)}</td>
+              <td>${formatNumber(qty, 0)} ${escapeHtml(unit)}</td>
+              <td>${money(value)}</td>
+              <td><span class="material-return-ui-patch-status">พัสดุส่งคืน</span></td>
+            </tr>
+          `;
+        }).join('');
+
+        return `
+          <div class="card material-return-ui-patch-card" data-return-patch-version="${RETURN_PATCH_VERSION}">
+            <h3>↩️ พัสดุส่งคืน</h3>
+            <div class="material-return-ui-patch-summary">
+              <span class="material-return-ui-patch-chip">รายการส่งคืน ${formatNumber(returnCount, 0)} รายการ</span>
+              <span class="material-return-ui-patch-chip">จำนวนส่งคืนรวม ${formatNumber(returnQtyTotal, 0)}</span>
+              <span class="material-return-ui-patch-chip">มูลค่าส่งคืนรวม ${money(returnValueTotal)} บาท</span>
+            </div>
+
+            <div class="material-return-ui-patch-table-wrap">
+              <table class="material-return-ui-patch-table">
+                <thead>
+                  <tr>
+                    <th>รหัสพัสดุ</th>
+                    <th>รายการพัสดุ</th>
+                    <th>Network</th>
+                    <th>เลขที่จอง</th>
+                    <th>Movement</th>
+                    <th>จำนวนส่งคืน</th>
+                    <th>มูลค่าส่งคืน</th>
+                    <th>สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      function insertReturnCard(materialCard, detail, returnItems) {
+        if (!materialCard || !returnItems.length) return;
+
+        const html = renderReturnCard(detail, returnItems);
+        materialCard.insertAdjacentHTML('afterend', html);
+      }
+
+      async function applyMaterialReturnPatch() {
+        const modal = document.getElementById('projectModal');
+        const modalBody = document.getElementById('modalBody');
+
+        if (!modal || !modalBody || modal.classList.contains('hidden')) return;
+
+        const wbs = getCurrentWbs();
+        if (!wbs) return;
+
+        const modalTextKey = modalBody.textContent.length + ':' + (modalBody.querySelectorAll('tr').length || 0);
+        const applyKey = wbs + ':' + modalTextKey;
+
+        if (applying || applyKey === lastAppliedKey) return;
+
+        applying = true;
+
+        try {
+          const url = makeApiUrl('materialdetail', { wbs: wbs });
+          const response = await fetch(url, { cache: 'no-store' });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+
+          const detail = await response.json();
+          const returnItems = getReturnItems(detail);
+
+          clearOldPatch();
+
+          if (!returnItems.length) {
+            lastAppliedKey = applyKey;
+            return;
+          }
+
+          const materialCard = findMaterialDetailCard();
+          if (!materialCard) return;
+
+          hideReturnRowsInOriginalTable(materialCard, returnItems);
+          insertReturnCard(materialCard, detail, returnItems);
+
+          lastAppliedKey = applyKey;
+        } catch (err) {
+          console.warn('[PEA CARS+ Material Return UI Patch]', err);
+        } finally {
+          applying = false;
+        }
+      }
+
+      function schedulePatch() {
+        window.setTimeout(applyMaterialReturnPatch, 250);
+        window.setTimeout(applyMaterialReturnPatch, 900);
+        window.setTimeout(applyMaterialReturnPatch, 1800);
+      }
+
+      document.addEventListener('click', function () {
+        schedulePatch();
+      });
+
+      document.addEventListener('DOMContentLoaded', function () {
+        const modalBody = document.getElementById('modalBody');
+        if (modalBody && window.MutationObserver) {
+          const observer = new MutationObserver(function () {
+            schedulePatch();
+          });
+
+          observer.observe(modalBody, {
+            childList: true,
+            subtree: true,
+            characterData: true
+          });
+        }
+
+        schedulePatch();
+      });
+
+      window.PEA_CARS_RETURN_UI_PATCH = {
+        version: RETURN_PATCH_VERSION,
+        apply: applyMaterialReturnPatch
+      };
+    })();
+  </script>
 </body>
 </html>
+'''
+
+out_path = Path('/mnt/data/index_v557b_material_return_patch.html')
+out_path.write_text(index_html, encoding='utf-8')
+print(f"Created: {out_path}")
+print(f"Size: {out_path.stat().st_size:,} bytes")
