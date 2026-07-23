@@ -1901,7 +1901,7 @@ function renderCostDetail(cost) {
 
 
 // =========================================
-// V5.5.7B MATERIAL RETURN FRONTEND FIX
+// V5.5.7C MATERIAL RETURN FRONTEND FIX - SINGLE RETURN BOX
 // - แยก Movement 581 / RETURN ออกจากตารางเบิกใช้งาน
 // - แสดงพัสดุส่งคืนเป็นกล่องแยก
 // - ไม่ให้นับ RETURN เป็น "ครบ"
@@ -2194,8 +2194,6 @@ function renderMaterialDetail(material) {
         </table>
       </div>
     </div>
-
-    ${renderMaterialReturnDetail(returnItems, material)}
   `;
 }
 
