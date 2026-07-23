@@ -3,6 +3,7 @@
  =========================================================
    PEA CARS+ V4 Professional Edition - Turbo V6.2 Stable Filter Logic
    File: script.js
+   Patch: V5.5.7B Material Return Frontend Fix
    Copy ทั้งไฟล์นี้ไปวางทับ script.js เดิม
 ========================================================= */
 
@@ -249,6 +250,24 @@ function injectDashboardFilterStyle() {
       color: #cbd5e1;
       font-size: 12px;
       font-weight: 700;
+    }
+    .row-return {
+      background: rgba(251, 146, 60, 0.08);
+    }
+    .material-status.return {
+      background: rgba(251, 146, 60, 0.16);
+      border-color: rgba(251, 146, 60, 0.42);
+      color: #fed7aa;
+    }
+    .material-return-card {
+      border-color: rgba(251, 146, 60, 0.32);
+      background: linear-gradient(135deg, rgba(251, 146, 60, 0.10), rgba(15, 23, 42, 0.72));
+    }
+    .material-return-note {
+      color: #fed7aa;
+      font-size: 12px;
+      font-weight: 700;
+      margin: 4px 0 10px;
     }
   `;
   document.head.appendChild(style);
@@ -1880,52 +1899,256 @@ function renderCostDetail(cost) {
   `;
 }
 
+
+// =========================================
+// V5.5.7B MATERIAL RETURN FRONTEND FIX
+// - แยก Movement 581 / RETURN ออกจากตารางเบิกใช้งาน
+// - แสดงพัสดุส่งคืนเป็นกล่องแยก
+// - ไม่ให้นับ RETURN เป็น "ครบ"
+// =========================================
+
+function toNumberMaterial_(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(String(value).replace(/,/g, "").trim());
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function isReturnMaterialItem(item) {
+  if (!item) return false;
+
+  const movementType = String(item.movementType || item.movement || "").trim();
+  const materialFlow = String(item.materialFlow || "").trim().toUpperCase();
+  const flowLabel = String(item.flowLabel || item.status || "").trim();
+  const requiredRaw = String(item.requiredRaw || "").trim();
+  const requiredSigned = toNumberMaterial_(item.requiredSigned);
+  const returnQty = toNumberMaterial_(item.returnQty);
+
+  return movementType === "581" ||
+    materialFlow === "RETURN" ||
+    flowLabel === "พัสดุส่งคืน" ||
+    requiredRaw.startsWith("-") ||
+    requiredRaw.endsWith("-") ||
+    requiredSigned < 0 ||
+    returnQty > 0;
+}
+
+function uniqueMaterialItems(items) {
+  const seen = new Set();
+
+  return (items || []).filter(function (item) {
+    const key = [
+      safeValue(item.materialId),
+      safeValue(item.wbs),
+      safeValue(item.network),
+      safeValue(item.reservationNo),
+      safeValue(item.materialCode),
+      safeValue(item.movementType),
+      safeValue(item.requiredRaw)
+    ].join("|");
+
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getReturnMaterialItems(material, allItemsRaw) {
+  material = material || {};
+  allItemsRaw = Array.isArray(allItemsRaw) ? allItemsRaw : [];
+
+  let returnItems = [];
+
+  if (Array.isArray(material.materialReturnItems) && material.materialReturnItems.length) {
+    returnItems = returnItems.concat(material.materialReturnItems);
+  }
+
+  if (Array.isArray(material.returnItems) && material.returnItems.length) {
+    returnItems = returnItems.concat(material.returnItems);
+  }
+
+  if (!returnItems.length) {
+    returnItems = allItemsRaw.filter(isReturnMaterialItem);
+  }
+
+  return uniqueMaterialItems(returnItems).filter(isReturnMaterialItem);
+}
+
+function getIssueMaterialItems(material, allItemsRaw) {
+  allItemsRaw = Array.isArray(allItemsRaw) ? allItemsRaw : [];
+  return allItemsRaw.filter(function (item) {
+    return !isReturnMaterialItem(item);
+  });
+}
+
+function getPendingIssueMaterialItems(material, issueItems) {
+  material = material || {};
+  issueItems = Array.isArray(issueItems) ? issueItems : [];
+
+  let pendingList = [];
+
+  if (Array.isArray(material.materialPendingItems) && material.materialPendingItems.length) {
+    pendingList = pendingList.concat(material.materialPendingItems);
+  } else if (Array.isArray(material.pendingIssueItems) && material.pendingIssueItems.length) {
+    pendingList = pendingList.concat(material.pendingIssueItems);
+  } else if (Array.isArray(material.pendingItems) && material.pendingItems.length) {
+    pendingList = pendingList.concat(material.pendingItems);
+  } else {
+    pendingList = issueItems.filter(function (x) {
+      return toNumberMaterial_(x.issuePendingQty ?? x.pendingQty ?? x.remain) > 0;
+    });
+  }
+
+  return uniqueMaterialItems(pendingList).filter(function (x) {
+    return !isReturnMaterialItem(x) &&
+      toNumberMaterial_(x.issuePendingQty ?? x.pendingQty ?? x.remain) > 0;
+  });
+}
+
+function formatMaterialQty(value, unit) {
+  const raw = safeValue(value);
+  const u = safeValue(unit);
+  if (u === "-") return raw;
+  return raw + " " + u;
+}
+
+function getReturnQty(item) {
+  const qty = toNumberMaterial_(item.returnQty || item.requiredQty || item.required || Math.abs(toNumberMaterial_(item.requiredSigned)));
+  return qty;
+}
+
+function renderMaterialReturnDetail(returnItems, material) {
+  returnItems = Array.isArray(returnItems) ? returnItems : [];
+  if (!returnItems.length) return "";
+
+  const returnQtyTotal = material.returnQtyTotal !== undefined
+    ? toNumberMaterial_(material.returnQtyTotal)
+    : returnItems.reduce(function (sum, x) {
+        return sum + getReturnQty(x);
+      }, 0);
+
+  const returnValueTotal = material.returnValueTotal !== undefined
+    ? toNumberMaterial_(material.returnValueTotal)
+    : returnItems.reduce(function (sum, x) {
+        return sum + toNumberMaterial_(x.returnValue);
+      }, 0);
+
+  const rows = returnItems.map(function (x) {
+    const materialCode = safeValue(x.materialCode);
+    const materialName = getMaterialDisplayName(x);
+    const network = safeValue(x.network);
+    const reservationNo = safeValue(x.reservationNo);
+    const movementType = safeValue(x.movementType || "581");
+    const qty = getReturnQty(x);
+    const unit = safeValue(x.unit);
+    const returnValue = toNumberMaterial_(x.returnValue);
+
+    return `
+      <tr class="row-return">
+        <td><span class="material-code-text">${escapeHtml(materialCode)}</span></td>
+        <td class="text-wrap">${escapeHtml(materialName)}</td>
+        <td>${escapeHtml(network)}</td>
+        <td>${escapeHtml(reservationNo)}</td>
+        <td>${escapeHtml(movementType)}</td>
+        <td>${escapeHtml(formatMaterialQty(qty, unit))}</td>
+        <td>${formatMoney(returnValue)}</td>
+        <td><span class="material-status return">พัสดุส่งคืน</span></td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <div class="detail-section card material-return-card" id="detail-part-material-return">
+      <div class="section-title-row">
+        <div>
+          <h3>พัสดุส่งคืน</h3>
+          <p class="muted">
+            รายการส่งคืน ${returnItems.length} รายการ /
+            จำนวนส่งคืนรวม ${escapeHtml(returnQtyTotal)} /
+            มูลค่าส่งคืนรวม ${formatMoney(returnValueTotal)} บาท
+          </p>
+          <div class="material-return-note">หมายเหตุ: รายการ Movement 581 / RETURN ไม่ถูกนับเป็นพัสดุค้างจริงหรือเบิกครบ</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>รหัสพัสดุ</th>
+              <th>ชื่อพัสดุ</th>
+              <th>Network</th>
+              <th>เลขที่จอง</th>
+              <th>Movement</th>
+              <th>จำนวนส่งคืน</th>
+              <th>มูลค่าส่งคืน</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 function renderMaterialDetail(material) {
   const wbs = material.wbs || (selectedProject && selectedProject.wbs) || "";
   const mw = getMaterialWaitingForWbs(wbs) || (selectedProject && selectedProject.materialWaiting) || null;
   const waitingDays = mw ? (mw.waitingDays || 0) : getMaterialWaitingDaysForWbs(wbs);
 
-  // V5.3.1 STABLE: ตารางหลักต้องแสดง "รายการพัสดุทั้งหมด" เสมอ
-  // ใช้ allItems/items จาก Backend เป็นหลัก และคำนวณจำนวนเบิกครบจากข้อมูลจริง ไม่ใช้ค่า completeCount เก่าจาก Cache
+  // V5.5.7B: Backend ส่ง items/allItems รวม ISSUE + RETURN
+  // ตาราง Material Detail หลักต้องแสดงเฉพาะ ISSUE/281 เท่านั้น
+  // RETURN/581 ต้องแยกไปกล่อง "พัสดุส่งคืน"
   const allItemsRaw = Array.isArray(material.allItems) && material.allItems.length
     ? material.allItems
     : (Array.isArray(material.items) ? material.items : []);
 
-  const allItems = allItemsRaw;
-  const pendingList = Array.isArray(material.pendingItems) && material.pendingItems.length
-    ? material.pendingItems
-    : allItems.filter(function (x) {
-        return Number(x.pendingQty || x.remain || 0) > 0;
-      });
+  const returnItems = getReturnMaterialItems(material, allItemsRaw);
+  const allItems = getIssueMaterialItems(material, allItemsRaw);
+
+  const pendingList = getPendingIssueMaterialItems(material, allItems);
 
   const pendingQtyTotal = pendingList.reduce(function (sum, x) {
-    return sum + Number(x.pendingQty || x.remain || 0);
+    return sum + toNumberMaterial_(x.issuePendingQty ?? x.pendingQty ?? x.remain);
   }, 0);
 
-  const computedTotalItems = allItems.length || Number(material.totalItems || 0);
-  const computedPendingCount = pendingList.length || Number(material.pendingCount || 0);
-  const computedCompleteCount = Math.max((allItems.length ? allItems.length : computedTotalItems) - computedPendingCount, 0);
+  const computedTotalItems = allItems.length || Number(material.issueItemsCount || 0);
+  const computedPendingCount = pendingList.length || Number(material.pendingIssueCount || material.pendingCount || 0);
+  const computedCompleteCount = Math.max(
+    Number(material.completeCount || computedTotalItems - computedPendingCount),
+    0
+  );
 
-  window.currentMaterialDetail = material;
+  window.currentMaterialDetail = Object.assign({}, material, {
+    items: allItems,
+    allItems: allItems,
+    pendingItems: pendingList,
+    pendingIssueItems: pendingList,
+    materialPendingItems: pendingList,
+    returnItems: returnItems,
+    materialReturnItems: returnItems
+  });
   window.currentMaterialWaitingDays = waitingDays;
 
   const rows = allItems.map(function (x) {
-    const pendingQty = Number(x.pendingQty || x.remain || 0);
+    const pendingQty = toNumberMaterial_(x.issuePendingQty ?? x.pendingQty ?? x.remain);
     const statusText = pendingQty > 0 ? "ค้าง" : "ครบ";
     const statusClass = pendingQty > 0 ? "material-status pending" : "material-status complete";
     const materialCode = safeValue(x.materialCode);
     const materialName = getMaterialDisplayName(x);
-    const network = safeValue(x.network);
+    const unit = safeValue(x.unit);
+    const requiredQty = x.issueRequiredQty !== undefined ? x.issueRequiredQty : x.requiredQty;
+    const issuedQty = x.issueIssuedQty !== undefined ? x.issueIssuedQty : x.issuedQty;
 
     return `
       <tr class="${pendingQty > 0 ? "row-pending" : "row-complete"}">
         <td><span class="material-code-text">${escapeHtml(materialCode)}</span></td>
         <td class="text-wrap">${escapeHtml(materialName)}</td>
-        <td>${escapeHtml(x.requiredQty)}</td>
-        <td>${escapeHtml(x.issuedQty)}</td>
-        <td>${escapeHtml(pendingQty)}</td>
+        <td>${escapeHtml(formatMaterialQty(requiredQty, unit))}</td>
+        <td>${escapeHtml(formatMaterialQty(issuedQty, unit))}</td>
+        <td>${escapeHtml(formatMaterialQty(pendingQty, unit))}</td>
         <td>${pendingQty > 0 && waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</td>
-        <td>${formatMoney(x.pendingValue)}</td>
+        <td>${formatMoney(x.issuePendingValue !== undefined ? x.issuePendingValue : x.pendingValue)}</td>
         <td><span class="${statusClass}">${statusText}</span></td>
       </tr>
     `;
@@ -1937,12 +2160,13 @@ function renderMaterialDetail(material) {
         <div>
           <h3>Material Detail</h3>
           <p class="muted">
-            รายการพัสดุทั้งหมด ${computedTotalItems} รายการ /
+            รายการพัสดุเบิกใช้งาน ${computedTotalItems} รายการ /
             เบิกครบ ${computedCompleteCount} รายการ /
             ค้างจริง ${computedPendingCount} รายการ /
-            จำนวนค้างรวม ${pendingQtyTotal} ชิ้น /
+            พัสดุส่งคืน ${returnItems.length} รายการ /
+            จำนวนค้างรวม ${pendingQtyTotal} /
             ค้างมาแล้ว ${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"} /
-            มูลค่าค้าง ${formatMoney(material.pendingValue || 0)} บาท
+            มูลค่าค้าง ${formatMoney(material.pendingIssueValue || material.pendingValue || 0)} บาท
           </p>
         </div>
         <button type="button" class="secondary-action" onclick="openPendingMaterialPopup()">
@@ -1965,11 +2189,13 @@ function renderMaterialDetail(material) {
             </tr>
           </thead>
           <tbody>
-            ${rows || `<tr><td colspan="8" class="empty-state">ไม่พบข้อมูลพัสดุ</td></tr>`}
+            ${rows || `<tr><td colspan="8" class="empty-state">ไม่พบข้อมูลพัสดุเบิกใช้งาน</td></tr>`}
           </tbody>
         </table>
       </div>
     </div>
+
+    ${renderMaterialReturnDetail(returnItems, material)}
   `;
 }
 
@@ -1987,26 +2213,27 @@ function getMaterialDisplayName(item) {
 function openPendingMaterialPopup() {
   const material = window.currentMaterialDetail || {};
   const waitingDays = window.currentMaterialWaitingDays || 0;
-  const wbs = material.wbs || (selectedProject && selectedProject.wbs) || "";
   const allItems = material.allItems || material.items || [];
-  const pendingList = (material.pendingItems || allItems.filter(function (x) {
-    return Number(x.pendingQty || x.remain || 0) > 0;
-  }));
+  const issueItems = getIssueMaterialItems(material, allItems);
+  const pendingList = getPendingIssueMaterialItems(material, issueItems);
 
   const rows = pendingList.map(function (x) {
-    const pendingQty = Number(x.pendingQty || x.remain || 0);
+    const pendingQty = toNumberMaterial_(x.issuePendingQty ?? x.pendingQty ?? x.remain);
     const materialCode = safeValue(x.materialCode);
     const materialName = getMaterialDisplayName(x);
-    const network = safeValue(x.network);
+    const unit = safeValue(x.unit);
+    const requiredQty = x.issueRequiredQty !== undefined ? x.issueRequiredQty : x.requiredQty;
+    const issuedQty = x.issueIssuedQty !== undefined ? x.issueIssuedQty : x.issuedQty;
+
     return `
       <tr>
         <td><span class="material-code-text">${escapeHtml(materialCode)}</span></td>
         <td class="text-wrap">${escapeHtml(materialName)}</td>
-        <td>${escapeHtml(x.requiredQty)}</td>
-        <td>${escapeHtml(x.issuedQty)}</td>
-        <td>${escapeHtml(pendingQty)}</td>
+        <td>${escapeHtml(formatMaterialQty(requiredQty, unit))}</td>
+        <td>${escapeHtml(formatMaterialQty(issuedQty, unit))}</td>
+        <td>${escapeHtml(formatMaterialQty(pendingQty, unit))}</td>
         <td>${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</td>
-        <td>${formatMoney(x.pendingValue)}</td>
+        <td>${formatMoney(x.issuePendingValue !== undefined ? x.issuePendingValue : x.pendingValue)}</td>
       </tr>
     `;
   }).join("");
@@ -2019,7 +2246,7 @@ function openPendingMaterialPopup() {
       <div class="mini-modal-head">
         <div>
           <h3>พัสดุค้างจริง</h3>
-          <p class="muted">ค้าง ${pendingList.length} จาก ${material.totalItems || allItems.length || 0} รายการ / ค้างมาแล้ว ${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</p>
+          <p class="muted">ค้าง ${pendingList.length} จาก ${issueItems.length || material.issueItemsCount || 0} รายการ / ค้างมาแล้ว ${waitingDays ? escapeHtml(waitingDays + " วัน") : "-"}</p>
         </div>
         <button type="button" onclick="closePendingMaterialPopup()">ปิด</button>
       </div>
