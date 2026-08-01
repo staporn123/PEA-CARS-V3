@@ -1,6 +1,4 @@
-from pathlib import Path
-
-index_html = r'''<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
@@ -661,9 +659,3 @@ index_html = r'''<!DOCTYPE html>
   </script>
 </body>
 </html>
-'''
-
-out_path = Path('/mnt/data/index_v557b_material_return_patch.html')
-out_path.write_text(index_html, encoding='utf-8')
-print(f"Created: {out_path}")
-print(f"Size: {out_path.stat().st_size:,} bytes")
