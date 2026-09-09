@@ -3,7 +3,7 @@
  =========================================================
    PEA CARS+ V4 Professional Edition - Turbo V6.2 Stable Filter Logic
    File: script.js
-   Patch: V5.5.7B Material Return Frontend Fix
+   Patch: V5.5.7B Material Return Frontend Fix + V5.5.4B API Resilience
    Copy ทั้งไฟล์นี้ไปวางทับ script.js เดิม
 ========================================================= */
 
@@ -3049,3 +3049,551 @@ function escapeAttr(value) {
 if (typeof window !== "undefined") {
   window.analyzeProjectFromModal = analyzeProjectFromModal;
 }
+
+/* ==========================================================
+   PEA CARS+ V5.5.4B API Resilience / Offline Cache Integrated
+   Purpose:
+   - ไม่เด้ง alert ตอน init timeout
+   - ใช้ localStorage เก็บ init ล่าสุดแบบข้าม session / มือถือปิดเปิดใหม่ยังอยู่
+   - ถ้ามี Offline Cache ให้แสดง Dashboard ทันทีก่อน แล้ว refresh API เบื้องหลัง
+   - ถ้า API ล้ม แต่มี cache ให้ใช้ cache ต่อ
+   - ถ้า API ล้มและไม่มี cache ให้แสดงกล่องแจ้งเตือนในหน้าเว็บแทน popup
+   - Refresh / Save Checklist จะไม่ล้าง Offline Cache หลักทิ้ง
+========================================================== */
+(function () {
+  var V554B_VERSION = "V5.5.4B-API-RESILIENCE-OFFLINE-CACHE-INTEGRATED";
+  var INIT_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 วัน
+  var LAZY_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;      // 6 ชั่วโมง
+  var RETRY_DELAYS_MS = [0, 1800, 4200];
+
+  function v554bText_(value) {
+    return value === null || value === undefined ? "" : String(value);
+  }
+
+  function v554bEscape_(value) {
+    return v554bText_(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function v554bSleep_(ms) {
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, ms || 0);
+    });
+  }
+
+  function v554bStorage_() {
+    var stores = [];
+    try { stores.push(window.localStorage); } catch (err1) {}
+    try { stores.push(window.sessionStorage); } catch (err2) {}
+
+    for (var i = 0; i < stores.length; i++) {
+      var s = stores[i];
+      if (!s) continue;
+      try {
+        var key = "PEA_CARS_V554B_STORAGE_TEST";
+        s.setItem(key, "1");
+        s.removeItem(key);
+        return s;
+      } catch (err3) {}
+    }
+    return null;
+  }
+
+  function v554bApiUrl_() {
+    try {
+      if (typeof CONFIG !== "undefined" && CONFIG.API_URL) return CONFIG.API_URL;
+      if (window.CONFIG && window.CONFIG.API_URL) return window.CONFIG.API_URL;
+    } catch (err) {}
+    return "";
+  }
+
+  function v554bApiHash_() {
+    var apiUrl = v554bApiUrl_();
+    var h = 0;
+    for (var i = 0; i < apiUrl.length; i++) {
+      h = ((h << 5) - h + apiUrl.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h || 0);
+  }
+
+  function v554bBaseKey_() {
+    return "PEA_CARS_V554B_" + v554bApiHash_();
+  }
+
+  function v554bKey_(name) {
+    return v554bBaseKey_() + "_" + String(name || "default");
+  }
+
+  function v554bGetRaw_(name) {
+    var s = v554bStorage_();
+    if (!s) return null;
+    try {
+      var raw = s.getItem(v554bKey_(name));
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function v554bSetRaw_(name, data) {
+    var s = v554bStorage_();
+    if (!s || !data) return;
+    try {
+      s.setItem(v554bKey_(name), JSON.stringify({
+        version: V554B_VERSION,
+        createdAt: Date.now(),
+        data: data
+      }));
+    } catch (err1) {
+      try {
+        v554bClearCache_(false, { keepInit: true });
+        s.setItem(v554bKey_(name), JSON.stringify({
+          version: V554B_VERSION,
+          createdAt: Date.now(),
+          data: data
+        }));
+      } catch (err2) {
+        console.warn("[PEA CARS+ V5.5.4B] cache write skipped", err2);
+      }
+    }
+  }
+
+  function v554bGetData_(name, maxAgeMs, allowStale) {
+    var item = v554bGetRaw_(name);
+    if (!item || !item.data) return null;
+
+    var age = Date.now() - Number(item.createdAt || 0);
+    var maxAge = Number(maxAgeMs || INIT_CACHE_MAX_AGE_MS);
+
+    if (!allowStale && (age < 0 || age > maxAge)) {
+      return null;
+    }
+
+    item.data.frontendCached = true;
+    item.data.offlineSavedAt = item.createdAt;
+    item.data.cacheSource = age > maxAge ? "browser-offline-stale" : "browser-offline-cache";
+    return item.data;
+  }
+
+  function v554bClearCache_(showLog, options) {
+    options = options || {};
+    var stores = [];
+    try { stores.push(window.localStorage); } catch (err1) {}
+    try { stores.push(window.sessionStorage); } catch (err2) {}
+
+    var removed = 0;
+    stores.forEach(function (s) {
+      if (!s) return;
+      var keys = [];
+      for (var i = 0; i < s.length; i++) {
+        var key = s.key(i);
+        if (!key) continue;
+        var isOurKey = key.indexOf(v554bBaseKey_()) === 0 || key.indexOf("PEA_CARS_") === 0;
+        if (!isOurKey) continue;
+        if (options.keepInit && (key.indexOf("_init") >= 0 || key.indexOf("OFFLINE_INIT") >= 0)) continue;
+        keys.push(key);
+      }
+      keys.forEach(function (key) {
+        s.removeItem(key);
+        removed++;
+      });
+    });
+
+    if (showLog !== false) console.log("PEA CARS+ cache cleared:", removed, "items");
+  }
+
+  function v554bSavedAtText_(ms) {
+    try {
+      return new Date(Number(ms || Date.now())).toLocaleString("th-TH");
+    } catch (err) {
+      return "ไม่ทราบเวลา";
+    }
+  }
+
+  function v554bInjectStyle_() {
+    if (document.getElementById("peaCarsV554BStyle")) return;
+
+    var style = document.createElement("style");
+    style.id = "peaCarsV554BStyle";
+    style.textContent = `
+      .pea-v554b-status {
+        margin-top: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 11px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(15, 23, 42, 0.70);
+        color: #cbd5e1;
+        font-size: 12px;
+        font-weight: 800;
+        max-width: 100%;
+      }
+      .pea-v554b-status.online {
+        border-color: rgba(34, 197, 94, 0.38);
+        background: rgba(22, 163, 74, 0.12);
+        color: #bbf7d0;
+      }
+      .pea-v554b-status.offline {
+        border-color: rgba(245, 158, 11, 0.42);
+        background: rgba(245, 158, 11, 0.13);
+        color: #fde68a;
+      }
+      .pea-v554b-status.error {
+        border-color: rgba(248, 113, 113, 0.44);
+        background: rgba(239, 68, 68, 0.13);
+        color: #fecaca;
+      }
+      .pea-v554b-no-data {
+        grid-column: 1 / -1;
+        padding: 18px;
+        border-radius: 18px;
+        border: 1px solid rgba(248, 113, 113, .35);
+        background: rgba(127, 29, 29, .16);
+      }
+      .pea-v554b-no-data h3 { margin: 0 0 8px; color: #fecaca; }
+      .pea-v554b-no-data p { margin: 4px 0; color: #cbd5e1; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function v554bSetStatus_(mode, message) {
+    v554bInjectStyle_();
+
+    var lastUpdate = document.getElementById("lastUpdate");
+    if (!lastUpdate) return;
+
+    var chip = document.getElementById("peaCarsV554BStatus");
+    if (!chip) {
+      chip = document.createElement("div");
+      chip.id = "peaCarsV554BStatus";
+      lastUpdate.insertAdjacentElement("afterend", chip);
+    }
+
+    chip.className = "pea-v554b-status " + (mode || "");
+    chip.innerHTML = v554bEscape_(message || "");
+  }
+
+  function v554bUnwrapInit_(raw) {
+    if (typeof unwrapObject === "function") return unwrapObject(raw);
+    if (raw && raw.data && typeof raw.data === "object") return raw.data;
+    return raw || {};
+  }
+
+  function v554bApplyInit_(rawInit, meta) {
+    meta = meta || {};
+    var init = v554bUnwrapInit_(rawInit);
+
+    allProjects = init.projects || [];
+    workQueue = init.workQueue || [];
+    alertCenter = init.alerts || [];
+    materialWaiting = typeof normalizeMaterialWaitingRows === "function"
+      ? normalizeMaterialWaitingRows(init.materialWaiting || init.materialWaitingC3 || init.c3Waiting || [])
+      : (init.materialWaiting || init.materialWaitingC3 || init.c3Waiting || []);
+    projectTimeline = typeof normalizeTimelineRows === "function"
+      ? normalizeTimelineRows(init.projectTimeline || init.timeline || [])
+      : (init.projectTimeline || init.timeline || []);
+
+    dataUpdateInfo = init.dataUpdate || init.dataUpdateInfo ||
+      (init.dashboard && init.dashboard.dataUpdate) ||
+      (init.dashboard && init.dashboard.lastDataUpdate) ||
+      init.lastDataUpdate || init.updatedAt || meta.savedAt || null;
+
+    if (typeof enrichProjectsWithC3Info === "function") enrichProjectsWithC3Info();
+
+    var dashboard = typeof buildDashboardFromProjects === "function"
+      ? buildDashboardFromProjects(allProjects, init.dashboard || {})
+      : (init.dashboard || { total: allProjects.length });
+
+    if (typeof renderKpi === "function") renderKpi(dashboard);
+    if (typeof renderCharts === "function") renderCharts(dashboard);
+    activeDashboardFilter = "all";
+    if (typeof renderProjectTable === "function") renderProjectTable(allProjects);
+    if (typeof renderSearchTable === "function") renderSearchTable(allProjects);
+    if (typeof renderWorkQueue === "function") renderWorkQueue(workQueue);
+    if (typeof renderAlertCenter === "function") renderAlertCenter(alertCenter);
+    if (typeof renderLastUpdate === "function") renderLastUpdate();
+
+    if (meta.offline) {
+      v554bSetStatus_("offline", "📦 ใช้ข้อมูลล่าสุดในเครื่อง เวลา " + v554bSavedAtText_(meta.savedAt) + " / API กำลังลองเชื่อมต่อใหม่");
+    } else if (meta.background) {
+      v554bSetStatus_("online", "✅ อัปเดตข้อมูลสดสำเร็จ " + new Date().toLocaleString("th-TH"));
+    } else {
+      v554bSetStatus_("online", "✅ โหลดข้อมูลสดสำเร็จ " + new Date().toLocaleString("th-TH"));
+    }
+  }
+
+  async function v554bApiActionRetry_(action, params, retryCount) {
+    retryCount = Number(retryCount || (typeof CONFIG !== "undefined" && CONFIG.API_RETRY_COUNT) || 3) || 3;
+    var lastErr = null;
+
+    for (var i = 0; i < retryCount; i++) {
+      if (RETRY_DELAYS_MS[i]) await v554bSleep_(RETRY_DELAYS_MS[i]);
+      try {
+        v554bSetStatus_("", "🔄 กำลังเชื่อมต่อ API " + action + " รอบที่ " + (i + 1) + "/" + retryCount + "...");
+        return await apiAction(action, params || {});
+      } catch (err) {
+        lastErr = err;
+        console.warn("[PEA CARS+ V5.5.4B] API retry failed", action, i + 1, err);
+      }
+    }
+
+    throw lastErr || new Error("API timeout: " + action);
+  }
+
+  async function v554bRefreshInitInBackground_() {
+    try {
+      var fresh = await v554bApiActionRetry_("init", {}, 3);
+      v554bSetRaw_("init", fresh);
+      v554bApplyInit_(fresh, { background: true });
+      if (typeof loadLazyDashboardLists === "function") loadLazyDashboardLists({ forceRefresh: false });
+    } catch (err) {
+      var offlineItem = v554bGetRaw_("init");
+      v554bSetStatus_("offline", "📦 API ยังไม่ตอบ ใช้ข้อมูลล่าสุดในเครื่องต่อ เวลา " + v554bSavedAtText_(offlineItem && offlineItem.createdAt));
+    }
+  }
+
+  function v554bShowNoData_(err) {
+    var message = "โหลด API ไม่สำเร็จ และเครื่องนี้ยังไม่มี Offline Cache";
+    v554bSetStatus_("error", "⚠️ " + message + (err && err.message ? " : " + err.message : ""));
+
+    var kpi = document.getElementById("kpiGrid");
+    if (kpi) {
+      kpi.innerHTML = `
+        <div class="pea-v554b-no-data">
+          <h3>ยังโหลดข้อมูลไม่ได้</h3>
+          <p>${v554bEscape_(message)}</p>
+          <p>กด Refresh อีกครั้ง หรือเปิดจากเครื่องที่เคยโหลดข้อมูลสำเร็จแล้วอย่างน้อย 1 ครั้ง</p>
+        </div>
+      `;
+    }
+
+    if (typeof renderProjectTable === "function") renderProjectTable([]);
+    if (typeof renderSearchTable === "function") renderSearchTable([]);
+  }
+
+  async function v554bLoadAllData_(options) {
+    options = options || {};
+
+    try {
+      if (typeof setLoading === "function") setLoading(true);
+      if (typeof detailCache !== "undefined" && detailCache && detailCache.clear) detailCache.clear();
+
+      var offlineItem = v554bGetRaw_("init");
+
+      // เปิดเว็บปกติ: ถ้ามี Offline Cache ให้แสดงทันที ไม่ต้องรอ Apps Script
+      if (!options.forceRefresh && offlineItem && offlineItem.data) {
+        v554bApplyInit_(offlineItem.data, { offline: true, savedAt: offlineItem.createdAt });
+        if (typeof setLoading === "function") setLoading(false);
+        v554bRefreshInitInBackground_();
+        return;
+      }
+
+      // Refresh หรือเครื่องยังไม่มี cache: พยายามดึงข้อมูลสด
+      var fresh = await v554bApiActionRetry_("init", {}, 3);
+      v554bSetRaw_("init", fresh);
+      v554bApplyInit_(fresh, {});
+
+      if (typeof loadLazyDashboardLists === "function") {
+        loadLazyDashboardLists({ forceRefresh: !!options.forceRefresh });
+      }
+    } catch (err) {
+      console.error(err);
+      var fallback = v554bGetRaw_("init");
+      if (fallback && fallback.data) {
+        v554bApplyInit_(fallback.data, { offline: true, savedAt: fallback.createdAt });
+      } else {
+        v554bShowNoData_(err);
+      }
+    } finally {
+      if (typeof setLoading === "function") setLoading(false);
+    }
+  }
+
+  async function v554bGetInitDataWithFrontendCache_(forceRefresh) {
+    lastInitLoadedFromFrontendCache = false;
+
+    if (!forceRefresh) {
+      var cached = v554bGetData_("init", INIT_CACHE_MAX_AGE_MS, true);
+      if (cached) {
+        lastInitLoadedFromFrontendCache = true;
+        return cached;
+      }
+    }
+
+    try {
+      var fresh = await v554bApiActionRetry_("init", {}, 3);
+      v554bSetRaw_("init", fresh);
+      return fresh;
+    } catch (err) {
+      var stale = v554bGetData_("init", INIT_CACHE_MAX_AGE_MS, true);
+      if (stale) {
+        lastInitLoadedFromFrontendCache = true;
+        return stale;
+      }
+      throw err;
+    }
+  }
+
+  async function v554bApiActionCached_(action, params, options) {
+    params = params || {};
+    options = options || {};
+    var name = "api_" + action + "_" + JSON.stringify(params || {});
+    var ttl = options.type === "lazy" ? LAZY_CACHE_MAX_AGE_MS : INIT_CACHE_MAX_AGE_MS;
+
+    if (!options.forceRefresh) {
+      var cached = v554bGetData_(name, ttl, false);
+      if (cached) return cached;
+    }
+
+    try {
+      var fresh = await apiAction(action, params);
+      v554bSetRaw_(name, fresh);
+      return fresh;
+    } catch (err) {
+      var stale = v554bGetData_(name, ttl, true);
+      if (stale) return stale;
+      throw err;
+    }
+  }
+
+  function v554bReplaceProjectInCache_(wbs, updatedProject) {
+    if (!wbs || !updatedProject) return null;
+
+    var item = v554bGetRaw_("init");
+    if (!item || !item.data) return null;
+
+    var init = item.data;
+    var list = Array.isArray(init.projects) ? init.projects : [];
+    var key = v554bText_(wbs).trim().toUpperCase();
+    var replaced = false;
+
+    init.projects = list.map(function (p) {
+      var pwbs = v554bText_(p && (p.wbs || p.WBS)).trim().toUpperCase();
+      if (pwbs === key) {
+        replaced = true;
+        return Object.assign({}, p, updatedProject);
+      }
+      return p;
+    });
+
+    if (!replaced) init.projects.push(updatedProject);
+
+    if (typeof buildDashboardFromProjects === "function") {
+      init.dashboard = buildDashboardFromProjects(init.projects, init.dashboard || {});
+    }
+    init.updatedAt = new Date().toISOString();
+    v554bSetRaw_("init", init);
+    return init;
+  }
+
+  async function v554bSaveDocumentChecklistFromModal_(wbs) {
+    try {
+      if (typeof setChecklistControlsEnabled === "function") setChecklistControlsEnabled(true);
+
+      var selects = document.querySelectorAll(".doc-status-select");
+      var remarks = document.querySelectorAll(".doc-remark-input");
+      var remarkMap = {};
+
+      remarks.forEach(function (input) {
+        remarkMap[String(input.dataset.row)] = input.value || "";
+      });
+
+      var items = Array.from(selects).map(function (select) {
+        var row = Number(select.dataset.row || 0);
+        return {
+          row: row,
+          status: select.value,
+          remark: remarkMap[String(row)] || "",
+          auditor: "GitHub Web",
+          missingQty: select.value === "ขาด" ? 1 : 0
+        };
+      }).filter(function (item) {
+        return item.row && item.row >= 2;
+      });
+
+      if (!items.length) {
+        alert("ไม่พบรายการเอกสารสำหรับบันทึก");
+        return;
+      }
+
+      if (!confirm("ยืนยันบันทึก Checklist จำนวน " + items.length + " รายการ?")) return;
+
+      v554bSetStatus_("", "💾 กำลังบันทึก Checklist...");
+      var result = await v554bApiActionRetry_("savechecklist", { items: JSON.stringify(items) }, 2);
+
+      if (result && result.success === false) {
+        alert("บันทึกไม่สำเร็จ: " + (result.message || ""));
+        return;
+      }
+
+      if (typeof detailCache !== "undefined" && detailCache && detailCache.delete && typeof normalizeKey === "function") {
+        detailCache.delete(normalizeKey(wbs));
+      }
+
+      var updatedProject = result.updatedProject || result.project ||
+        (result.snapshotMiniUpdate && (result.snapshotMiniUpdate.updatedProject || result.snapshotMiniUpdate.project)) || null;
+
+      var updatedInit = v554bReplaceProjectInCache_(wbs, updatedProject);
+      if (typeof closeModal === "function") closeModal();
+
+      if (updatedInit) v554bApplyInit_(updatedInit, { background: true });
+
+      alert("บันทึก Checklist สำเร็จ");
+      v554bRefreshInitInBackground_();
+    } catch (err) {
+      console.error(err);
+      alert("บันทึก Checklist ไม่สำเร็จ: " + err.message);
+    }
+  }
+
+  // ปรับให้ timeout ไม่ต่ำเกินไป แต่ไม่รอนานเกินบนมือถือ
+  try {
+    if (typeof CONFIG !== "undefined") {
+      var currentTimeout = Number(CONFIG.API_TIMEOUT || 0);
+      if (!currentTimeout || currentTimeout < 25000) CONFIG.API_TIMEOUT = 25000;
+      if (currentTimeout > 45000) CONFIG.API_TIMEOUT = 45000;
+      CONFIG.API_RETRY_COUNT = Number(CONFIG.API_RETRY_COUNT || 3);
+      CONFIG.FRONTEND_CACHE_TTL_MS = INIT_CACHE_MAX_AGE_MS;
+      CONFIG.FRONTEND_CACHE_LAZY_TTL_MS = LAZY_CACHE_MAX_AGE_MS;
+    }
+  } catch (err) {
+    console.warn("[PEA CARS+ V5.5.4B] CONFIG tuning skipped", err);
+  }
+
+  // Override ของเดิมใน script.js
+  try { frontendCacheStorage_ = v554bStorage_; } catch (err1) { window.frontendCacheStorage_ = v554bStorage_; }
+  try { frontendCacheTtlMs_ = function (type) { return type === "lazy" ? LAZY_CACHE_MAX_AGE_MS : INIT_CACHE_MAX_AGE_MS; }; } catch (err2) {}
+  try { frontendCacheGet_ = function (name, ttlMs) { return v554bGetData_(name, ttlMs || INIT_CACHE_MAX_AGE_MS, false); }; } catch (err3) {}
+  try { frontendCacheSet_ = function (name, data) { v554bSetRaw_(name, data); }; } catch (err4) {}
+  try { clearFrontendCache = function (showLog) { v554bClearCache_(showLog, { keepInit: true }); }; } catch (err5) {}
+  try { getInitDataWithFrontendCache_ = v554bGetInitDataWithFrontendCache_; } catch (err6) { window.getInitDataWithFrontendCache_ = v554bGetInitDataWithFrontendCache_; }
+  try { apiActionCached_ = v554bApiActionCached_; } catch (err7) { window.apiActionCached_ = v554bApiActionCached_; }
+  try { loadAllData = v554bLoadAllData_; } catch (err8) { window.loadAllData = v554bLoadAllData_; }
+  try { saveDocumentChecklistFromModal = v554bSaveDocumentChecklistFromModal_; } catch (err9) { window.saveDocumentChecklistFromModal = v554bSaveDocumentChecklistFromModal_; }
+
+  window.PEA_CARS_V554B_RESILIENCE = {
+    version: V554B_VERSION,
+    loadAllData: v554bLoadAllData_,
+    refreshBackground: v554bRefreshInitInBackground_,
+    getOfflineInit: function () { return v554bGetRaw_("init"); },
+    clearOfflineInit: function () {
+      var s = v554bStorage_();
+      if (s) s.removeItem(v554bKey_("init"));
+    },
+    forceClearAllCache: function () { v554bClearCache_(true, { keepInit: false }); }
+  };
+
+  window.addEventListener("online", function () {
+    v554bRefreshInitInBackground_();
+  });
+
+  v554bInjectStyle_();
+  console.log("PEA CARS+", V554B_VERSION, "loaded");
+})();
+
