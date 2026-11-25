@@ -662,7 +662,7 @@ function buildDashboardFromProjects(projects, fallback) {
     rel: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "REL"; }).length,
     teco: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "TECO"; }).length,
     clsd: projects.filter(function (p) { return String(p.systemStatus || "").toUpperCase() === "CLSD"; }).length,
-    c3Waiting: Math.max(projects.filter(isC3WaitingProject).length, Number(fallback.c3Waiting || fallback.materialWaitingC3 || 0)),
+    c3Waiting: projects.filter(isC3WaitingProject).length,
     c3MaxDays: getC3MaxWaitingDays(projects),
     materialWaitingValue: getMaterialWaitingTotalValue(),
     _source: fallback._source || "frontend-v6-2"
@@ -821,8 +821,12 @@ function enrichProjectsWithC3Info() {
 }
 
 function isC3WaitingProject(p) {
-  const userStatus = String(p.userStatus || p.stage || "").toUpperCase();
-  return p.isC3Waiting === true || userStatus === "C3" || !!getMaterialWaitingForWbs(p.wbs);
+  const userStatus = String(
+    p.userStatus || p.stage || ""
+  ).trim().toUpperCase();
+
+  return userStatus === "C3" &&
+    !!getMaterialWaitingForWbs(p.wbs);
 }
 
 function getMaterialWaitingForWbs(wbs) {
